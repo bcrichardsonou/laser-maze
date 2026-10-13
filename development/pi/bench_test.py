@@ -24,12 +24,13 @@ def main():
     try:
         fcntl.flock(controller_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
+        controller_lock.close()
         parser.exit(1, "Another test or deployment is using the controller.\n")
-    with serial.Serial(args.port, 115200, timeout=2, write_timeout=2) as port:
+    with controller_lock, serial.Serial(args.port, 115200, timeout=2, write_timeout=2) as port:
         time.sleep(2)
         port.reset_input_buffer()
         try:
-            exchange(port, "HELLO", "HELLO 1 bench-0.2.1")
+            exchange(port, "HELLO", "HELLO 1 bench-0.3.0")
             print("Firmware verified. Turning LED on for five seconds.", flush=True)
             exchange(port, "ARM", "OK ARM")
             exchange(port, "ON", "OK ON")

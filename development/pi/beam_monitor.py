@@ -17,7 +17,7 @@ def expect(port, command, reply):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", action="version", version="bench-0.2.1")
+    parser.add_argument("--version", action="version", version="bench-0.3.0")
     parser.add_argument("port")
     args = parser.parse_args()
     import serial
@@ -29,13 +29,14 @@ def main():
     try:
         fcntl.flock(controller_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
+        controller_lock.close()
         parser.exit(1, "Another test or deployment is using the controller.\n")
-    with serial.Serial(args.port, 115200, timeout=0.05, write_timeout=1) as port:
+    with controller_lock, serial.Serial(args.port, 115200, timeout=0.05, write_timeout=1) as port:
         time.sleep(2)
         port.reset_input_buffer()
         port.timeout = 2
         try:
-            expect(port, "HELLO", "HELLO 1 bench-0.2.1")
+            expect(port, "HELLO", "HELLO 1 bench-0.3.0")
             expect(port, "BEAM", "BEAM CLEAR")
             expect(port, "ARM", "OK ARM")
             # Input events may occur between command acknowledgments, so handle

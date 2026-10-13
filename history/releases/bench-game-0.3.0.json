@@ -1,0 +1,23 @@
+{
+  "version": "bench-game-0.3.0",
+  "recorded_release_at": "2026-10-13T20:12:47.755628+00:00",
+  "imported_at": "2026-11-08T03:38:10.246315+00:00",
+  "firmware_version": "bench-0.3.0",
+  "python_version": "bench-0.3.0",
+  "notes": "One-beam game: timer, third-break loss, recovery, and simulated objectives",
+  "source_archive_sha256": "e0b35eb51cbcbb821a0ea10d7585fbf3816058c7b2e24a20850250f6c6c2c307",
+  "original_source_sha256": {
+    "arduino/BenchController/BenchController.ino": "d26533d06114062d1aab39c094fc3bca20c4c437e0ae669f5c3d2cec3b25dbcf",
+    "pi/beam_monitor.py": "4d85aa5b492cae8a8c9b73022c1dd05a9ed8bdbe422febb4e443e50571df7859",
+    "pi/bench_test.py": "030f7febb53b88b03d776083c9dede922039b9cbd2b7d8f5c976f93627265d63",
+    "pi/game_engine.py": "996e64d5109ab31f5158a9fefd83762fc28cbd51ae902ad93559fad1a7a87319",
+    "pi/game_test.py": "2daf0a67a5c420dcd6a2ceb15d70e15d655f6fd267ebeabca4a012de378d5512"
+  },
+  "public_source_sha256": {
+    "development/arduino/BenchController/BenchController.ino": "d26533d06114062d1aab39c094fc3bca20c4c437e0ae669f5c3d2cec3b25dbcf",
+    "development/pi/beam_monitor.py": "4d85aa5b492cae8a8c9b73022c1dd05a9ed8bdbe422febb4e443e50571df7859",
+    "development/pi/bench_test.py": "030f7febb53b88b03d776083c9dede922039b9cbd2b7d8f5c976f93627265d63",
+    "development/pi/game_engine.py": "996e64d5109ab31f5158a9fefd83762fc28cbd51ae902ad93559fad1a7a87319",
+    "development/pi/game_test.py": "2daf0a67a5c420dcd6a2ceb15d70e15d655f6fd267ebeabca4a012de378d5512"
+  }
+}

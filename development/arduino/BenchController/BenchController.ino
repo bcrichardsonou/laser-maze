@@ -1,6 +1,6 @@
 // Bench only: LED_BUILTIN represents a laser. No field outputs are connected.
 const unsigned long WATCHDOG_MS = 1000;
-const char VERSION[] = "bench-0.2.1";
+const char VERSION[] = "bench-0.3.0";
 const int BEAM_PIN = 2;
 // Active-high powered button module: OUT -> D2, GND -> GND.
 const int BEAM_BROKEN_LEVEL = HIGH;
@@ -45,6 +45,10 @@ void handleCommand() {
     } else {
       Serial.println("ERR DISARMED");
     }
+  } else if (strcmp(command, "PAUSE") == 0) {
+    digitalWrite(LED_BUILTIN, LOW);
+    ledOn = false;
+    Serial.println("OK PAUSE");
   } else if (strcmp(command, "OFF") == 0) {
     disableOutput();
     Serial.println("OK OFF");
