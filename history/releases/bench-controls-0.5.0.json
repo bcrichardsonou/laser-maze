@@ -1,0 +1,29 @@
+{
+  "version": "bench-controls-0.5.0",
+  "recorded_release_at": "2026-10-13T20:57:34.852914+00:00",
+  "imported_at": "2026-11-08T03:38:10.246315+00:00",
+  "firmware_version": "bench-0.5.0",
+  "python_version": "bench-0.5.0",
+  "notes": "Physical keypad controls, two beams, fresh latch objective, RGB status, and countdown",
+  "source_archive_sha256": "6a07f370cc063ed62b2b7aa2cd04b10c9fc420e811d969ea6e0c46af7b0be2f1",
+  "original_source_sha256": {
+    "arduino/BenchController/BenchController.ino": "2a14da2eb8c179d1b37f44a5053b048a78bcd878366ce7c4383b30fbf1895fbb",
+    "arduino/BenchController/InputPanel.h": "a47b283690909a5a38181318e1ff0087f50d6cf3d4eda1ac89071ee2b24d6c9d",
+    "pi/beam_monitor.py": "4bf510a8d61b418acf35bd4df392d3a73ca58848a4464e83ccc208d5df78fe66",
+    "pi/bench_test.py": "5ba3d922b77c579fae72357cdb449589e381ac72abd1ecf45735e66666de6d56",
+    "pi/game_engine.py": "996e64d5109ab31f5158a9fefd83762fc28cbd51ae902ad93559fad1a7a87319",
+    "pi/game_test.py": "0a39a665e935d170d893e2b4c6dd4efc73e7b41801ef14724bf60e74f877634f",
+    "pi/panel_game.py": "b21f76599b1b9accd998645591ad1ae7b6da0fd3bfaba130d7e3f738235a2f46",
+    "pi/panel_test.py": "66b233c59d439dbad5bda914b6298f762541376ff86cb80d4dedd99a978b7415"
+  },
+  "public_source_sha256": {
+    "development/arduino/BenchController/BenchController.ino": "2a14da2eb8c179d1b37f44a5053b048a78bcd878366ce7c4383b30fbf1895fbb",
+    "development/arduino/BenchController/InputPanel.h": "a47b283690909a5a38181318e1ff0087f50d6cf3d4eda1ac89071ee2b24d6c9d",
+    "development/pi/beam_monitor.py": "4bf510a8d61b418acf35bd4df392d3a73ca58848a4464e83ccc208d5df78fe66",
+    "development/pi/bench_test.py": "5ba3d922b77c579fae72357cdb449589e381ac72abd1ecf45735e66666de6d56",
+    "development/pi/game_engine.py": "996e64d5109ab31f5158a9fefd83762fc28cbd51ae902ad93559fad1a7a87319",
+    "development/pi/game_test.py": "0a39a665e935d170d893e2b4c6dd4efc73e7b41801ef14724bf60e74f877634f",
+    "development/pi/panel_game.py": "b21f76599b1b9accd998645591ad1ae7b6da0fd3bfaba130d7e3f738235a2f46",
+    "development/pi/panel_test.py": "66b233c59d439dbad5bda914b6298f762541376ff86cb80d4dedd99a978b7415"
+  }
+}

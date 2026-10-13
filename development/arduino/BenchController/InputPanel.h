@@ -8,6 +8,7 @@ const uint8_t PANEL_INPUT_PINS[] = {2, 3, 4};
 bool panelRaw[3], panelStable[3];
 unsigned long panelChanged[3];
 bool panelDiagnostic = false;
+bool panelAutoLights = true;
 bool keypadReady = false;
 unsigned long keypadPollAt = 0;
 char rawKey = 'N', stableKey = 'N';
@@ -115,10 +116,11 @@ bool panelCommand(const char *text, bool armed) {
     }
     return true;
   }
-  if (strcmp(text, "PANEL") == 0) {
+  if (strcmp(text, "PANEL") == 0 || strcmp(text, "CONTROL") == 0) {
     if (!armed) {Serial.println("ERR DISARMED"); return true;}
     panelDiagnostic = true;
-    Serial.println("OK PANEL");
+    panelAutoLights = strcmp(text, "PANEL") == 0;
+    Serial.print("OK "); Serial.println(text);
     return true;
   }
   if (strcmp(text, "INPUTS") == 0) {panelInputSnapshot(); return true;}
@@ -132,6 +134,8 @@ bool panelCommand(const char *text, bool armed) {
     if (strcmp(text, "RGB RED") == 0) panelColor(255, 0, 0);
     else if (strcmp(text, "RGB GREEN") == 0) panelColor(0, 255, 0);
     else if (strcmp(text, "RGB BLUE") == 0) panelColor(0, 0, 255);
+    else if (strcmp(text, "RGB YELLOW") == 0) panelColor(255, 180, 0);
+    else if (strcmp(text, "RGB PURPLE") == 0) panelColor(120, 0, 180);
     else if (strcmp(text, "RGB OFF") == 0) panelColor(0, 0, 0);
     else if (strcmp(text, "LED ON") == 0) digitalWrite(5, HIGH);
     else if (strcmp(text, "LED OFF") == 0) digitalWrite(5, LOW);
@@ -151,10 +155,12 @@ void updatePanel(bool armed) {
       panelStable[i] = value;
       if (armed && panelDiagnostic) {
         Serial.print("INPUT "); Serial.print(i); Serial.print(' '); Serial.println(value ? 1 : 0);
+        if (panelAutoLights) {
         digitalWrite(5, (panelStable[0] || panelStable[1] || panelStable[2]) ? HIGH : LOW);
         if (panelStable[0] || panelStable[1]) panelColor(255, 0, 0);
         else if (panelStable[2]) panelColor(0, 0, 255);
         else panelColor(0, 255, 0);
+        }
       } else if (armed && i == 0) Serial.println(value ? "BEAM BROKEN" : "BEAM CLEAR");
     }
   }

@@ -1,7 +1,7 @@
 // Bench only: LED_BUILTIN represents a laser. No field outputs are connected.
 #include "InputPanel.h"
 const unsigned long WATCHDOG_MS = 1000;
-const char VERSION[] = "bench-0.4.1";
+const char VERSION[] = "bench-0.5.0";
 bool stableBroken = false;
 char command[32];
 unsigned int used = 0;
@@ -20,6 +20,7 @@ void disableOutput() {
 void handleCommand() {
   if (strcmp(command, "HELLO") == 0) {
     panelDiagnostic = false;
+    panelAutoLights = true;
     disableOutput();
     Serial.print("HELLO 1 ");
     Serial.println(VERSION);
@@ -40,8 +41,7 @@ void handleCommand() {
     if (armed) {
       digitalWrite(LED_BUILTIN, HIGH);
       ledOn = true;
-      digitalWrite(5, HIGH);
-      panelColor(0, 255, 0);
+      if (panelAutoLights) {digitalWrite(5, HIGH); panelColor(0, 255, 0);}
       Serial.println("OK ON");
     } else {
       Serial.println("ERR DISARMED");
@@ -49,8 +49,10 @@ void handleCommand() {
   } else if (strcmp(command, "PAUSE") == 0) {
     digitalWrite(LED_BUILTIN, LOW);
     ledOn = false;
-    digitalWrite(5, LOW);
-    if (armed) panelColor(255, 180, 0); else panelOff();
+    if (panelAutoLights) {
+      digitalWrite(5, LOW);
+      if (armed) panelColor(255, 180, 0); else panelOff();
+    }
     Serial.println("OK PAUSE");
   } else if (strcmp(command, "OFF") == 0) {
     disableOutput();
