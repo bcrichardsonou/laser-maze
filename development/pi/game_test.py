@@ -10,7 +10,7 @@ import time
 
 from game_engine import Game, Settings, MODES
 
-VERSION = "bench-0.3.0"
+VERSION = "bench-0.4.1"
 
 
 def main():
@@ -35,6 +35,7 @@ def main():
     pending = bytearray()
     shown = None
     output = None
+    displayed_seconds = None
     with lock, serial.Serial(args.port, 115200, timeout=0.02, write_timeout=1) as port:
         def command(text, expected):
             port.write((text + "\n").encode())
@@ -52,7 +53,7 @@ def main():
             time.sleep(2)
             port.reset_input_buffer()
             port.timeout = 2
-            initial("HELLO", "HELLO 1 bench-0.3.0")
+            initial("HELLO", "HELLO 1 bench-0.4.1")
             initial("BEAM", "BEAM CLEAR")
             initial("ARM", "OK ARM")
             port.timeout = 0.02
@@ -104,6 +105,10 @@ def main():
                     command("BEAM", "BEAM")
                     next_poll = now + 0.25
                 desired = game.outputs(now)[0]
+                seconds = math.ceil(game.remaining(now))
+                if seconds != displayed_seconds:
+                    command(f"TIME {seconds}", "OK TIME")
+                    displayed_seconds = seconds
                 if desired != output:
                     command("ON" if desired else "PAUSE", "OK ON" if desired else "OK PAUSE")
                     output = desired

@@ -1,0 +1,27 @@
+{
+  "version": "bench-panel-0.4.1",
+  "recorded_release_at": "2026-10-13T20:51:48.373348+00:00",
+  "imported_at": "2026-11-08T03:38:10.246315+00:00",
+  "firmware_version": "bench-0.4.1",
+  "python_version": "bench-0.4.1",
+  "notes": "Two beam buttons, objective latch, keypad, RGB pixel, and TK51 countdown display",
+  "source_archive_sha256": "298bbba454c56574beee1484ddf7b85735f947045d8bad6c56b30bb21c537dee",
+  "original_source_sha256": {
+    "arduino/BenchController/BenchController.ino": "75c7fcc02aaf8c7812e2751ff6f2bdca80fcc8d0db21a2d12f0a5416e2040ba9",
+    "arduino/BenchController/InputPanel.h": "cfbf183c6565800a3c6d4b3294d833f3909cbd1bb4c09b5cb935ab50144c97c9",
+    "pi/beam_monitor.py": "7e7ac3fc4ad897b4672ddc5a29c14a7018b6816fb2d9d3469c9baa938175eaad",
+    "pi/bench_test.py": "503ae16bd6b4558081d4894f6b55426f50d6b7685363bb36792bf24b2a0641e5",
+    "pi/game_engine.py": "996e64d5109ab31f5158a9fefd83762fc28cbd51ae902ad93559fad1a7a87319",
+    "pi/game_test.py": "08def90cf1d238237d8c276ec9a7c1b081752fa806057863f2e8f1cc576b2e17",
+    "pi/panel_test.py": "778618be73476836a5115f661d48f85240ac1ca5ab4a3b1269b9310837f17968"
+  },
+  "public_source_sha256": {
+    "development/arduino/BenchController/BenchController.ino": "75c7fcc02aaf8c7812e2751ff6f2bdca80fcc8d0db21a2d12f0a5416e2040ba9",
+    "development/arduino/BenchController/InputPanel.h": "cfbf183c6565800a3c6d4b3294d833f3909cbd1bb4c09b5cb935ab50144c97c9",
+    "development/pi/beam_monitor.py": "7e7ac3fc4ad897b4672ddc5a29c14a7018b6816fb2d9d3469c9baa938175eaad",
+    "development/pi/bench_test.py": "503ae16bd6b4558081d4894f6b55426f50d6b7685363bb36792bf24b2a0641e5",
+    "development/pi/game_engine.py": "996e64d5109ab31f5158a9fefd83762fc28cbd51ae902ad93559fad1a7a87319",
+    "development/pi/game_test.py": "08def90cf1d238237d8c276ec9a7c1b081752fa806057863f2e8f1cc576b2e17",
+    "development/pi/panel_test.py": "778618be73476836a5115f661d48f85240ac1ca5ab4a3b1269b9310837f17968"
+  }
+}

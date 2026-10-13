@@ -1,13 +1,8 @@
 // Bench only: LED_BUILTIN represents a laser. No field outputs are connected.
+#include "InputPanel.h"
 const unsigned long WATCHDOG_MS = 1000;
-const char VERSION[] = "bench-0.3.0";
-const int BEAM_PIN = 2;
-// Active-high powered button module: OUT -> D2, GND -> GND.
-const int BEAM_BROKEN_LEVEL = HIGH;
-const unsigned long DEBOUNCE_MS = 30;
-bool rawBroken = false;
+const char VERSION[] = "bench-0.4.1";
 bool stableBroken = false;
-unsigned long inputChangedAt = 0;
 char command[32];
 unsigned int used = 0;
 bool overflow = false;
@@ -19,13 +14,17 @@ void disableOutput() {
   digitalWrite(LED_BUILTIN, LOW);
   ledOn = false;
   armed = false;
+  panelOff();
 }
 
 void handleCommand() {
   if (strcmp(command, "HELLO") == 0) {
+    panelDiagnostic = false;
     disableOutput();
     Serial.print("HELLO 1 ");
     Serial.println(VERSION);
+  } else if (panelCommand(command, armed)) {
+    // Panel commands never energize the simulated laser output.
   } else if (strcmp(command, "ARM") == 0) {
     lastHeartbeat = millis();
     armed = true;
@@ -41,6 +40,8 @@ void handleCommand() {
     if (armed) {
       digitalWrite(LED_BUILTIN, HIGH);
       ledOn = true;
+      digitalWrite(5, HIGH);
+      panelColor(0, 255, 0);
       Serial.println("OK ON");
     } else {
       Serial.println("ERR DISARMED");
@@ -48,6 +49,8 @@ void handleCommand() {
   } else if (strcmp(command, "PAUSE") == 0) {
     digitalWrite(LED_BUILTIN, LOW);
     ledOn = false;
+    digitalWrite(5, LOW);
+    if (armed) panelColor(255, 180, 0); else panelOff();
     Serial.println("OK PAUSE");
   } else if (strcmp(command, "OFF") == 0) {
     disableOutput();
@@ -66,24 +69,15 @@ void handleCommand() {
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(BEAM_PIN, INPUT);
-  rawBroken = stableBroken = digitalRead(BEAM_PIN) == BEAM_BROKEN_LEVEL;
-  inputChangedAt = millis();
+  panelBegin();
+  stableBroken = panelStable[0];
   disableOutput();
   Serial.begin(115200);
 }
 
 void loop() {
-  bool reading = digitalRead(BEAM_PIN) == BEAM_BROKEN_LEVEL;
-  if (reading != rawBroken) {
-    rawBroken = reading;
-    inputChangedAt = millis();
-  }
-  if (rawBroken != stableBroken &&
-      (unsigned long)(millis() - inputChangedAt) >= DEBOUNCE_MS) {
-    stableBroken = rawBroken;
-    if (armed) Serial.println(stableBroken ? "BEAM BROKEN" : "BEAM CLEAR");
-  }
+  updatePanel(armed);
+  stableBroken = panelStable[0];
   if (armed && (unsigned long)(millis() - lastHeartbeat) >= WATCHDOG_MS) {
     disableOutput();
     Serial.println("FAULT WATCHDOG");
