@@ -1,0 +1,19 @@
+{
+  "version": "bench-release-0.2.1",
+  "recorded_release_at": "2026-10-13T17:12:18.137169+00:00",
+  "imported_at": "2026-11-08T03:38:10.246315+00:00",
+  "firmware_version": "bench-0.2.1",
+  "python_version": "bench-0.2.1",
+  "notes": "Active-high button input, debounce, USB heartbeat shutdown",
+  "source_archive_sha256": "f5ac465a77f54f7558b1ec714646260ec688985a5738c442117d870acb0bd7a7",
+  "original_source_sha256": {
+    "arduino/BenchController/BenchController.ino": "9bb8fe7176f86c23296ab2adbc04249a860c8a49a8afc56129c5f12521e6646d",
+    "pi/beam_monitor.py": "7e931e998bb87a35d449eda4741e436894a19b06f8de55779915df27f854a92a",
+    "pi/bench_test.py": "d01005ee6e0b3a28b3cea6784adb4d2504a91879ad0874814e561b1e12aabe24"
+  },
+  "public_source_sha256": {
+    "development/arduino/BenchController/BenchController.ino": "9bb8fe7176f86c23296ab2adbc04249a860c8a49a8afc56129c5f12521e6646d",
+    "development/pi/beam_monitor.py": "7e931e998bb87a35d449eda4741e436894a19b06f8de55779915df27f854a92a",
+    "development/pi/bench_test.py": "d01005ee6e0b3a28b3cea6784adb4d2504a91879ad0874814e561b1e12aabe24"
+  }
+}
