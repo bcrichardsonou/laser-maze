@@ -7,11 +7,12 @@ from pathlib import Path
 import time
 from game_engine import Game, Settings, MODES
 
-VERSION = "bench-0.5.0"
+VERSION = "bench-0.6.0"
 
 
 class Controls:
-    def __init__(self, fast=False):
+    def __init__(self, fast=False, reporting=None):
+        self.reporting = reporting
         self.settings = Settings(beam_count=2, startup=2, duration=30, cooldown=2, warmup=1) if fast else Settings(beam_count=2)
         self.levels = [False, False, False]
         self.mode = MODES[0]
@@ -27,6 +28,7 @@ class Controls:
             if rising: self.game.objective_usb(now)
 
     def key(self, key, now):
+        self.tick(now)
         if self.game and self.game.state in ("starting", "running"):
             if key == "D": self.game.finish("stopped")
             elif key in "1234": self.game.key(int(key), now)
@@ -38,6 +40,7 @@ class Controls:
             self.game = Game(self.mode, self.settings)
             self.game.broken = list(self.levels[:2])
             self.game.start(now)
+            if self.reporting: self.reporting.begin(self.game, now)
             self.result = None
         elif key == "D": self.result = None
 
@@ -45,6 +48,7 @@ class Controls:
         if self.game:
             self.game.tick(now)
             if self.game.state in ("finished", "fault"):
+                if self.reporting: self.reporting.finish(self.game, now)
                 self.result = (self.game.outcome, self.game.breaks)
                 self.game = None
 
@@ -74,8 +78,19 @@ def main():
     except BlockingIOError:
         lock.close()
         parser.exit(1, "Stop other controller tests first.\n")
-    controls = Controls(args.fast)
-    with lock, serial.Serial(args.port, 115200, timeout=2, write_timeout=1) as port:
+    from game_reporting import Reporting
+    reporting = Reporting(Path.home() / "zoco-monitor/laser-maze", VERSION, args.fast)
+    controls = Controls(args.fast, reporting)
+    connected = False
+    reported_fault = ""
+    try:
+        connection = serial.Serial(args.port, 115200, timeout=2, write_timeout=1)
+    except (OSError, serial.SerialException):
+        reporting.status(controls, (False, False, 0, "OFF"), time.monotonic(),
+            connected=False, fault="arduino_open_failed")
+        lock.close()
+        parser.exit(1, "Cannot open Arduino. Fault saved locally.\n")
+    with lock, connection as port:
         def initial(text, expected):
             port.write((text + "\n").encode()); port.flush()
             reply = port.readline().decode("ascii", errors="replace").strip()
@@ -86,7 +101,7 @@ def main():
             replies.append((expected, time.monotonic() + 1))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.5.0")
+            initial("HELLO", "HELLO 1 bench-0.6.0")
             initial("KEYPAD", "KEYPAD READY")
             # Initialize all levels BEFORE enabling event subscription.
             port.write(b"INPUTS\n"); port.flush()
@@ -96,6 +111,7 @@ def main():
             controls.inputs([v == "1" for v in row[1:]], time.monotonic())
             initial("ARM", "OK ARM")
             initial("CONTROL", "OK CONTROL")
+            connected = True
             port.timeout = 0.03
             pending = bytearray()
             next_hb = next_poll = 0
@@ -136,6 +152,7 @@ def main():
                 if previous is None or desired[2] != previous[2]: send(f"TIME {desired[2]}", "OK TIME")
                 if previous is None or desired[3] != previous[3]: send("RGB " + desired[3], "OK RGB " + desired[3])
                 previous = desired
+                reporting.status(controls, desired, now)
                 if now >= next_hb: send("HB", "OK HB"); next_hb = now + 0.25
                 if now >= next_poll:
                     send("INPUTS", "INPUTS"); send("KEYPAD", "KEYPAD READY"); next_poll = now + 0.5
@@ -148,10 +165,17 @@ def main():
                     else: print(f"IDLE — selected {controls.mode}; A to start", flush=True)
                     shown = status
         except KeyboardInterrupt: print("\nPanel game stopped.", flush=True)
-        except (OSError, RuntimeError, serial.SerialException) as error: parser.exit(1, f"FAULT: {error}\n")
+        except (OSError, RuntimeError, serial.SerialException) as error:
+            connected = False
+            reported_fault = "controller_communication_fault"
+            parser.exit(1, f"FAULT: {error}\n")
         finally:
             try: port.write(b"OFF\n"); port.flush()
             except (OSError, serial.SerialException): pass
+            if controls.game:
+                reporting.finish(controls.game, time.monotonic(), "communication_fault" if reported_fault else "stopped")
+            reporting.status(controls, (False, False, 0, "OFF"), time.monotonic(),
+                connected=connected, fault=reported_fault, stopped=not reported_fault)
 
 
 if __name__ == "__main__": main()
