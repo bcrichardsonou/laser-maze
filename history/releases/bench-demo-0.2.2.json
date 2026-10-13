@@ -1,0 +1,19 @@
+{
+  "version": "bench-demo-0.2.2",
+  "recorded_release_at": "2026-10-13T17:16:19.326461+00:00",
+  "imported_at": "2026-11-08T03:38:10.246315+00:00",
+  "firmware_version": "bench-0.2.1",
+  "python_version": "bench-0.2.1",
+  "notes": "Demo: one command backs up, uploads, verifies, and records the release",
+  "source_archive_sha256": "c8a23c40de8fe757a5177a92f550503d0a50146481528116a5e0eee0377eec41",
+  "original_source_sha256": {
+    "arduino/BenchController/BenchController.ino": "9bb8fe7176f86c23296ab2adbc04249a860c8a49a8afc56129c5f12521e6646d",
+    "pi/beam_monitor.py": "7e931e998bb87a35d449eda4741e436894a19b06f8de55779915df27f854a92a",
+    "pi/bench_test.py": "d01005ee6e0b3a28b3cea6784adb4d2504a91879ad0874814e561b1e12aabe24"
+  },
+  "public_source_sha256": {
+    "development/arduino/BenchController/BenchController.ino": "9bb8fe7176f86c23296ab2adbc04249a860c8a49a8afc56129c5f12521e6646d",
+    "development/pi/beam_monitor.py": "7e931e998bb87a35d449eda4741e436894a19b06f8de55779915df27f854a92a",
+    "development/pi/bench_test.py": "d01005ee6e0b3a28b3cea6784adb4d2504a91879ad0874814e561b1e12aabe24"
+  }
+}
