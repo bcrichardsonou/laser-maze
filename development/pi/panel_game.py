@@ -3,12 +3,13 @@ import argparse
 from collections import deque
 import fcntl
 import math
+import json
 import signal
 from pathlib import Path
 import time
 from game_engine import Game, Settings, MODES
 
-VERSION = "bench-0.9.0"
+VERSION = "bench-0.10.0"
 
 
 class Controls:
@@ -90,6 +91,11 @@ def main():
     audio = Audio()
     effects = Audio()
     sounds = GameSounds(audio, effects)
+    from maintenance import Maintenance
+    try:
+        identity=json.loads((Path.home()/'zoco-monitor/device-config.json').read_text())['device_id']
+    except (OSError,ValueError,KeyError):identity=''
+    maintenance=Maintenance(Path.home()/'zoco-monitor/laser-maze/control',identity,audio,effects)
     def audio_metrics():
         return dict(audio.metrics(), audio_effects_error=effects.error or 'none',
             audio_effect_last_cue_requested=effects.last_cue)
@@ -99,7 +105,7 @@ def main():
         connection = serial.Serial(args.port, 115200, timeout=2, write_timeout=1)
     except (OSError, serial.SerialException):
         reporting.status(controls, (False, False, 0, "OFF"), time.monotonic(),
-            connected=False, fault="arduino_open_failed", audio=audio_metrics())
+            connected=False, fault="arduino_open_failed", audio=audio_metrics(),maintenance=maintenance.metrics())
         lock.close()
         parser.exit(1, "Cannot open Arduino. Fault saved locally.\n")
     with lock, connection as port:
@@ -113,7 +119,7 @@ def main():
             replies.append((expected, time.monotonic() + 1))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.9.0")
+            initial("HELLO", "HELLO 1 bench-0.10.0")
             initial("KEYPAD", "KEYPAD READY")
             # Initialize all levels BEFORE enabling event subscription.
             port.write(b"INPUTS\n"); port.flush()
@@ -131,6 +137,7 @@ def main():
             shown = None
             print("PHYSICAL PANEL: 1 USB | 2 USB break-all | 3 keys | 4 keys break-all", flush=True)
             print("A starts; D stops. Release both beam buttons before starting.", flush=True)
+            print("Portal maintenance requires local C confirmation. C renews test enable; D cancels tests/sound; B exits maintenance locally.",flush=True)
             print("Latch requires a fresh OFF→ON during RUNNING. Keys objective: 1,3,2,4.", flush=True)
             print("Built-in LED = beam 1; D5 indicator = beam 2; RGB = combined status.", flush=True)
             print("FAST DEMO 2/30/2/1 seconds" if args.fast else "Normal timing 5/150/7/5 seconds", flush=True)
@@ -153,19 +160,20 @@ def main():
                     elif line == "KEY UP": pass
                     elif line == "KEY INVALID": print("Press one keypad key at a time.", flush=True)
                     elif len(words) == 2 and words[0] == "KEY" and len(words[1]) == 1 and words[1] in "0123456789ABCD*#":
-                        controls.key(words[1], now)
+                        if not maintenance.local_key(words[1],controls):controls.key(words[1],now)
                     elif replies and line == replies[0][0]: replies.popleft()
                     elif line: raise RuntimeError(f"Controller fault: {line}")
                 if replies and now > replies[0][1]: raise RuntimeError("Controller acknowledgment timed out")
                 controls.tick(now)
                 sounds.update(controls, now)
-                desired = controls.display(now)
+                maintenance.tick(controls,now,serial_idle=not replies,previous=previous)
+                desired = maintenance.display() if maintenance.enabled or maintenance.pending else controls.display(now)
                 if previous is None or desired[0] != previous[0]: send("ON" if desired[0] else "PAUSE", "OK ON" if desired[0] else "OK PAUSE")
                 if previous is None or desired[1] != previous[1]: send("LED ON" if desired[1] else "LED OFF", "OK LED ON" if desired[1] else "OK LED OFF")
                 if previous is None or desired[2] != previous[2]: send(f"TIME {desired[2]}", "OK TIME")
                 if previous is None or desired[3] != previous[3]: send("RGB " + desired[3], "OK RGB " + desired[3])
                 previous = desired
-                reporting.status(controls, desired, now, audio=audio_metrics())
+                reporting.status(controls, desired, now, audio=audio_metrics(),maintenance=maintenance.metrics())
                 if now >= next_hb: send("HB", "OK HB"); next_hb = now + 0.25
                 if now >= next_poll:
                     send("INPUTS", "INPUTS"); send("KEYPAD", "KEYPAD READY"); next_poll = now + 0.5
@@ -190,7 +198,7 @@ def main():
             if controls.game:
                 reporting.finish(controls.game, time.monotonic(), "communication_fault" if reported_fault else "stopped")
             reporting.status(controls, (False, False, 0, "OFF"), time.monotonic(),
-                connected=connected, fault=reported_fault, stopped=not reported_fault, audio=audio_metrics())
+                connected=connected, fault=reported_fault, stopped=not reported_fault, audio=audio_metrics(),maintenance=maintenance.metrics())
 
 
 if __name__ == "__main__": main()

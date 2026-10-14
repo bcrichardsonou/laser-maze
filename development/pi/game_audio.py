@@ -42,6 +42,7 @@ class Audio:
     def __init__(self, folder=None):
         self.backend = shutil.which('pw-play') or shutil.which('aplay')
         self.enabled = os.environ.get('ZOCO_AUDIO_ENABLED', '0') == '1'
+        self.muted = False
         self.process = None
         self.pending = deque(maxlen=3)
         self.last_cue = 'none'
@@ -78,7 +79,7 @@ class Audio:
         self.assets_ready = all(self.paths.get(cue) == Path(__file__).parent/'audio'/filename for cue,filename in MEDIA.items())
 
     def queue(self, cue, priority=False):
-        if not self.enabled or not self.backend: return
+        if not self.enabled or self.muted or not self.backend: return
         if cue not in self.paths:
             self.error = 'audio_asset_missing';return
         if priority:
@@ -120,6 +121,7 @@ class Audio:
 
     def metrics(self):
         return dict(audio_enabled=self.enabled, audio_player_available=bool(self.backend),
+            audio_muted=self.muted,
             audio_assets_ready=self.assets_ready, audio_last_cue_requested=self.last_cue, audio_error=self.error or 'none')
 
     def cancel(self):

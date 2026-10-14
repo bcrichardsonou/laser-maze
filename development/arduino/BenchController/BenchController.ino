@@ -1,7 +1,7 @@
 // Bench only: LED_BUILTIN represents a laser. No field outputs are connected.
 #include "InputPanel.h"
 const unsigned long WATCHDOG_MS = 1000;
-const char VERSION[] = "bench-0.9.0";
+const char VERSION[] = "bench-0.10.0";
 bool stableBroken = false;
 char command[32];
 unsigned int used = 0;
