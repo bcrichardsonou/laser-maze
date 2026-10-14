@@ -1,0 +1,33 @@
+{
+  "version": "bench-audio-0.8.0",
+  "recorded_release_at": "2026-10-14T01:29:32.814994+00:00",
+  "imported_at": "2026-11-08T03:38:10.246315+00:00",
+  "firmware_version": "bench-0.8.0",
+  "python_version": "bench-0.8.0",
+  "notes": "Managed service upload acceptance and nonblocking Pi sound cues. Audio remains disabled until a wired USB audio output and amplifier are connected. Game rules and normal timing unchanged.",
+  "source_archive_sha256": "accd5a997d1d44fad83302f117d497714b399617ca1278672aefe8b4cabcbd18",
+  "original_source_sha256": {
+    "arduino/BenchController/BenchController.ino": "bbb4ffdd57be81480ea81d4120d82baebb22aaa954c55ba381a6c69829267517",
+    "arduino/BenchController/InputPanel.h": "a47b283690909a5a38181318e1ff0087f50d6cf3d4eda1ac89071ee2b24d6c9d",
+    "pi/beam_monitor.py": "57bf5a04c6f33c7b1f4fcfb45a8757e86772e5262ab22f263c8ca566e26302cb",
+    "pi/bench_test.py": "ab4e183f39765055722fb1dcbec9933a416ffaa2ebb0ca2ff7915792b71ae4fe",
+    "pi/game_audio.py": "041f02d3d5acd71f51ef04a22d23a74177d634714cca15dc8ea07682259bd5d3",
+    "pi/game_engine.py": "996e64d5109ab31f5158a9fefd83762fc28cbd51ae902ad93559fad1a7a87319",
+    "pi/game_reporting.py": "4eb5b018577204f4ac6fbfb0cd3483c721468185d72617520313bddd965d5b99",
+    "pi/game_test.py": "658c09178dc9c67294381cab2f8842ef0dcd35c5a58920cacc15c1db5210ae39",
+    "pi/panel_game.py": "aa9c32affdcc6858043e5b91a74f2c69738cc1b94181313c117a1746658209ba",
+    "pi/panel_test.py": "6214feb08306a609d3166ce4a2f185fdb04c4ec89a8b583e2516c711843eb3c4"
+  },
+  "public_source_sha256": {
+    "development/arduino/BenchController/BenchController.ino": "bbb4ffdd57be81480ea81d4120d82baebb22aaa954c55ba381a6c69829267517",
+    "development/arduino/BenchController/InputPanel.h": "a47b283690909a5a38181318e1ff0087f50d6cf3d4eda1ac89071ee2b24d6c9d",
+    "development/pi/beam_monitor.py": "57bf5a04c6f33c7b1f4fcfb45a8757e86772e5262ab22f263c8ca566e26302cb",
+    "development/pi/bench_test.py": "ab4e183f39765055722fb1dcbec9933a416ffaa2ebb0ca2ff7915792b71ae4fe",
+    "development/pi/game_audio.py": "041f02d3d5acd71f51ef04a22d23a74177d634714cca15dc8ea07682259bd5d3",
+    "development/pi/game_engine.py": "996e64d5109ab31f5158a9fefd83762fc28cbd51ae902ad93559fad1a7a87319",
+    "development/pi/game_reporting.py": "4eb5b018577204f4ac6fbfb0cd3483c721468185d72617520313bddd965d5b99",
+    "development/pi/game_test.py": "658c09178dc9c67294381cab2f8842ef0dcd35c5a58920cacc15c1db5210ae39",
+    "development/pi/panel_game.py": "aa9c32affdcc6858043e5b91a74f2c69738cc1b94181313c117a1746658209ba",
+    "development/pi/panel_test.py": "6214feb08306a609d3166ce4a2f185fdb04c4ec89a8b583e2516c711843eb3c4"
+  }
+}

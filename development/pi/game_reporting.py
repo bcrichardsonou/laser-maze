@@ -80,7 +80,7 @@ class Reporting:
         self.session = None
         self.results_this_run += 1
 
-    def status(self, controls, desired, now, connected=True, fault="", stopped=False):
+    def status(self, controls, desired, now, connected=True, fault="", stopped=False, audio=None):
         if not fault and not stopped and controls.result and controls.result[0] == "startup_blocked":
             fault = "startup_blocked"
         game = controls.game
@@ -95,6 +95,7 @@ class Reporting:
             bench_games_this_run=self.games_this_run, bench_results_this_run=self.results_this_run)
         if self.session: metrics["session_id"] = self.session
         if controls.result: metrics["last_result"] = controls.result[0]
+        if audio: metrics.update(audio)
         state = "faulted" if fault else "unknown" if stopped or not connected else "running" if game else "ready"
         status = dict(state=state, fault_summary=fault, metrics=metrics)
         signature = json.dumps({k:v for k,v in metrics.items() if k != "remaining_seconds"}, sort_keys=True)
