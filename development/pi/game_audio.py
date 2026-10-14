@@ -21,6 +21,7 @@ TONES = {
     'stop': [(440, .09), (300, .12)],
     'fault': [(160, .12), (0, .08), (160, .12)],
 }
+MEDIA = {name: name+'.wav' for name in ('preparation','entrance','warning90','warning30','warning10','beam','win_keys','win_usb','beam_loss','timeout')}
 
 
 def write_tone(path, notes):
@@ -49,6 +50,9 @@ class Audio:
         self.environment = os.environ.copy()
         self.environment.setdefault('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')
         self.folder = Path(folder or Path.home()/'laser-maze/audio-cache')
+        self.paths = {}
+        self.durations = {}
+        self.assets_ready = False
         try:
             self.folder.mkdir(parents=True, exist_ok=True, mode=0o700)
             for cue, notes in TONES.items():
@@ -57,13 +61,26 @@ class Audio:
                 try:
                     write_tone(name, notes)
                     os.replace(name, self.folder/(cue+'.wav'))
+                    self.paths[cue] = self.folder/(cue+'.wav')
+                    self.durations[cue] = sum(duration for _,duration in notes)
                 finally:
                     if os.path.exists(name): os.unlink(name)
         except OSError:
             self.enabled = False; self.error = 'audio_cache_unavailable'
+        for cue, filename in MEDIA.items():
+            asset = Path(__file__).parent/'audio'/filename
+            try:
+                with wave.open(str(asset)) as wav:
+                    self.durations[cue] = wav.getnframes()/wav.getframerate()
+                self.paths[cue] = asset
+            except (OSError, wave.Error):
+                self.paths.pop(cue, None)
+        self.assets_ready = all(self.paths.get(cue) == Path(__file__).parent/'audio'/filename for cue,filename in MEDIA.items())
 
     def queue(self, cue, priority=False):
-        if not self.enabled or not self.backend or cue not in TONES: return
+        if not self.enabled or not self.backend: return
+        if cue not in self.paths:
+            self.error = 'audio_asset_missing';return
         if priority:
             self.pending.clear()
             if self.process and self.process.poll() is None:
@@ -91,19 +108,26 @@ class Audio:
         if Path(self.backend).name == 'aplay': command += ['-q']
         target = os.environ.get('ZOCO_AUDIO_TARGET')
         if target and Path(self.backend).name == 'pw-play': command += ['--target', target]
-        command += [str(self.folder/(cue+'.wav'))]
+        command += [str(self.paths[cue])]
         try:
             self.process = subprocess.Popen(command, env=self.environment,
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             self.last_cue = cue
-            self.deadline = now + 3
+            self.deadline = now + max(3, self.durations[cue]+2)
             self.error = ''
         except OSError:
             self.error = 'audio_player_unavailable'
 
     def metrics(self):
         return dict(audio_enabled=self.enabled, audio_player_available=bool(self.backend),
-            audio_last_cue_requested=self.last_cue, audio_error=self.error or 'none')
+            audio_assets_ready=self.assets_ready, audio_last_cue_requested=self.last_cue, audio_error=self.error or 'none')
+
+    def cancel(self):
+        self.pending.clear()
+        if self.process and self.process.poll() is None:
+            try: self.process.terminate()
+            except ProcessLookupError: pass
+            self.deadline = time.monotonic()+1
 
     def close(self):
         self.pending.clear()
@@ -119,49 +143,63 @@ class Audio:
 
 
 class GameSounds:
-    def __init__(self, audio):
+    def __init__(self, audio, effects=None):
         self.audio = audio
+        self.effects = effects or audio
         self.game = None
         self.phase = None
         self.breaks = 0
         self.countdown = None
         self.result = None
         self.mode = None
+        self.remaining = None
+        self.warned = set()
 
     def update(self, controls, now):
         game = controls.game
-        if controls.mode != self.mode:
-            if self.mode is not None: self.audio.queue('select')
-            self.mode = controls.mode
+        self.mode = controls.mode
         if game is not self.game:
             self.game = game; self.phase = None; self.breaks = 0; self.countdown = None
+            self.remaining = game.settings.duration if game else None
+            self.warned = set()
+            if game and game.state == 'starting':
+                self.effects.cancel();self.audio.queue('preparation',priority=True)
         if game:
-            if game.state == 'starting':
-                second = max(0, math.ceil(game.running_at-now))
-                if second != self.countdown:
-                    self.audio.queue('countdown'); self.countdown = second
-            if game.state == 'running' and self.phase != 'running': self.audio.queue('start', priority=True)
-            if game.breaks > self.breaks and game.state == 'running': self.audio.queue('beam')
+            if game.state == 'running':
+                if self.phase != 'running': self.audio.queue('entrance')
+                remaining = game.remaining(now)
+                crossed = [(threshold,cue) for threshold,cue in [(90,'warning90'),(30,'warning30'),(14,'warning10')]
+                    if threshold not in self.warned and self.remaining is not None and self.remaining > threshold >= remaining]
+                if crossed:
+                    self.warned.update(threshold for threshold,_ in crossed)
+                    self.audio.queue(crossed[-1][1],priority=True)
+                self.remaining = remaining
+            if game.breaks > self.breaks and game.state == 'running': self.effects.queue('beam',priority=True)
             self.breaks = game.breaks; self.phase = game.state
         if controls.result is not None and controls.result is not self.result:
             outcome = controls.result[0]
-            cue = 'win' if outcome == 'win' else 'stop' if outcome == 'stopped' else 'fault' if outcome in ('startup_blocked','communication_fault') else 'loss'
-            self.audio.queue(cue, priority=True)
+            self.effects.cancel()
+            cue = ('win_keys' if controls.mode.startswith('keys') else 'win_usb') if outcome == 'win' else 'beam_loss' if outcome == 'beam_limit' else 'timeout' if outcome == 'timeout' else None
+            if cue:self.audio.queue(cue,priority=True)
+            else:self.audio.cancel()  # Manual stop / faults have no result voice in the design.
         self.result = controls.result
         self.audio.update(now)
+        if self.effects is not self.audio:self.effects.update(now)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--test', action='store_true', required=True)
-    parser.parse_args()
+    parser.add_argument('--cue', choices=tuple(MEDIA))
+    args = parser.parse_args()
     audio = Audio()
     audio.enabled = True  # Explicit standalone test; game-service setting stays unchanged.
     try:
-        for cue in ('countdown','start','beam','win','loss','stop'):
+        if not audio.assets_ready: parser.exit(1,'Original game audio files are missing.\n')
+        for cue in (args.cue,) if args.cue else tuple(MEDIA):
             print('Sound test:', cue, flush=True)
             audio.queue(cue, priority=True)
-            until = time.monotonic()+1.2
+            until = time.monotonic()+audio.durations[cue]+.4
             while time.monotonic()<until:
                 audio.update(time.monotonic()); time.sleep(.03)
             if audio.error: print('Playback issue:', audio.error, flush=True)

@@ -1,0 +1,62 @@
+{
+  "preparation": {
+    "original_filename": "startAlarm.mp3",
+    "original_sha256": "738c1deade1211d3e631bd258d0cf5748f77c343e4e41a2cb80981da8b546621",
+    "file": "preparation.wav",
+    "duration_seconds": 8.176
+  },
+  "entrance": {
+    "original_filename": "System Shutdown - Entrance.mp3",
+    "original_sha256": "63a791d46b2d75d11ef2c825f5ebe51cbb531d31fa28f74def3aa53d55506668",
+    "file": "entrance.wav",
+    "duration_seconds": 4.807
+  },
+  "warning90": {
+    "original_filename": "System Shutdown in 90.mp3",
+    "original_sha256": "e7b84d2f3c987e536f2a274a4211ff804e55172d49e56f6c8eb6333ebcd59e26",
+    "file": "warning90.wav",
+    "duration_seconds": 4.441
+  },
+  "warning30": {
+    "original_filename": "System Shutdown in 30.mp3",
+    "original_sha256": "3f033d563473e60f091977d2979906a0993786faf975637a18c05e8b37e8aa2a",
+    "file": "warning30.wav",
+    "duration_seconds": 3.631
+  },
+  "warning10": {
+    "original_filename": "System Shutdown in 10.mp3",
+    "original_sha256": "740fc9dd449ab13c287f14de24a3f34c3ce89e51df2d96d7c576ee53187e817f",
+    "file": "warning10.wav",
+    "duration_seconds": 14.054
+  },
+  "beam": {
+    "original_filename": "alarm.mp3",
+    "original_sha256": "43f582ef51bbedb5e2a836d304b4e6250a6892e7ba33a76e1b4f6024058ca504",
+    "file": "beam.wav",
+    "duration_seconds": 1.116
+  },
+  "win_keys": {
+    "original_filename": "Corruptors Disabled.mp3",
+    "original_sha256": "7647e8585bf22057b2ab4bccd2fb7033015a4d42e7a128b6b4ead5fe93c9c886",
+    "file": "win_keys.wav",
+    "duration_seconds": 2.116
+  },
+  "win_usb": {
+    "original_filename": "Software Uploaded.mp3",
+    "original_sha256": "b56e3a24c4da50837c610f71fcd134332997bd36b03e563dc3d8c3de40090302",
+    "file": "win_usb.wav",
+    "duration_seconds": 2.064
+  },
+  "beam_loss": {
+    "original_filename": "Laser Breach - Exit.mp3",
+    "original_sha256": "38a2eb2228194f60c15574bc969f0471e5c3500ec821bb4f05a7afaf6e0dd78c",
+    "file": "beam_loss.wav",
+    "duration_seconds": 5.695
+  },
+  "timeout": {
+    "original_filename": "Time Up - Exit.mp3",
+    "original_sha256": "c198fbb0882667e8820ad9c397259f48e8b7572901007fa648f3950d3d64b499",
+    "file": "timeout.wav",
+    "duration_seconds": 4.18
+  }
+}

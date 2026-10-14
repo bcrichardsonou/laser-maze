@@ -8,7 +8,7 @@ from pathlib import Path
 import time
 from game_engine import Game, Settings, MODES
 
-VERSION = "bench-0.8.0"
+VERSION = "bench-0.9.0"
 
 
 class Controls:
@@ -88,14 +88,18 @@ def main():
     controls = Controls(args.fast, reporting)
     from game_audio import Audio, GameSounds
     audio = Audio()
-    sounds = GameSounds(audio)
+    effects = Audio()
+    sounds = GameSounds(audio, effects)
+    def audio_metrics():
+        return dict(audio.metrics(), audio_effects_error=effects.error or 'none',
+            audio_effect_last_cue_requested=effects.last_cue)
     connected = False
     reported_fault = ""
     try:
         connection = serial.Serial(args.port, 115200, timeout=2, write_timeout=1)
     except (OSError, serial.SerialException):
         reporting.status(controls, (False, False, 0, "OFF"), time.monotonic(),
-            connected=False, fault="arduino_open_failed", audio=audio.metrics())
+            connected=False, fault="arduino_open_failed", audio=audio_metrics())
         lock.close()
         parser.exit(1, "Cannot open Arduino. Fault saved locally.\n")
     with lock, connection as port:
@@ -109,7 +113,7 @@ def main():
             replies.append((expected, time.monotonic() + 1))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.8.0")
+            initial("HELLO", "HELLO 1 bench-0.9.0")
             initial("KEYPAD", "KEYPAD READY")
             # Initialize all levels BEFORE enabling event subscription.
             port.write(b"INPUTS\n"); port.flush()
@@ -161,7 +165,7 @@ def main():
                 if previous is None or desired[2] != previous[2]: send(f"TIME {desired[2]}", "OK TIME")
                 if previous is None or desired[3] != previous[3]: send("RGB " + desired[3], "OK RGB " + desired[3])
                 previous = desired
-                reporting.status(controls, desired, now, audio=audio.metrics())
+                reporting.status(controls, desired, now, audio=audio_metrics())
                 if now >= next_hb: send("HB", "OK HB"); next_hb = now + 0.25
                 if now >= next_poll:
                     send("INPUTS", "INPUTS"); send("KEYPAD", "KEYPAD READY"); next_poll = now + 0.5
@@ -182,10 +186,11 @@ def main():
             try: port.write(b"OFF\n"); port.flush()
             except (OSError, serial.SerialException): pass
             audio.close()
+            effects.close()
             if controls.game:
                 reporting.finish(controls.game, time.monotonic(), "communication_fault" if reported_fault else "stopped")
             reporting.status(controls, (False, False, 0, "OFF"), time.monotonic(),
-                connected=connected, fault=reported_fault, stopped=not reported_fault, audio=audio.metrics())
+                connected=connected, fault=reported_fault, stopped=not reported_fault, audio=audio_metrics())
 
 
 if __name__ == "__main__": main()
