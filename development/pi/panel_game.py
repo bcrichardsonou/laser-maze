@@ -3,11 +3,12 @@ import argparse
 from collections import deque
 import fcntl
 import math
+import signal
 from pathlib import Path
 import time
 from game_engine import Game, Settings, MODES
 
-VERSION = "bench-0.6.0"
+VERSION = "bench-0.7.0"
 
 
 class Controls:
@@ -70,6 +71,10 @@ def main():
     parser.add_argument("port")
     parser.add_argument("--fast", action="store_true")
     args = parser.parse_args()
+    # systemd stop must use the same OFF/report cleanup as Ctrl-C.
+    def stop_requested(signum, frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, stop_requested)
     import serial
     directory = Path.home() / "laser-maze/deployments"
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -101,7 +106,7 @@ def main():
             replies.append((expected, time.monotonic() + 1))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.6.0")
+            initial("HELLO", "HELLO 1 bench-0.7.0")
             initial("KEYPAD", "KEYPAD READY")
             # Initialize all levels BEFORE enabling event subscription.
             port.write(b"INPUTS\n"); port.flush()

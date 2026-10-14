@@ -1,0 +1,31 @@
+{
+  "version": "bench-autostart-0.7.0",
+  "recorded_release_at": "2026-10-14T00:33:47.522706+00:00",
+  "imported_at": "2026-11-08T03:38:10.246315+00:00",
+  "firmware_version": "bench-0.7.0",
+  "python_version": "bench-0.7.0",
+  "notes": "Automatic game service support: graceful shutdown, managed upload stop/start, independent report-sync lock. Gameplay waits for physical A start; normal 150-second timing.",
+  "source_archive_sha256": "63cb808076a5e08bb7f5ed38b2b81cd288ed686ec21e60c8756facc0ae9a6737",
+  "original_source_sha256": {
+    "arduino/BenchController/BenchController.ino": "e9bee4b6d04a0c31f570ebed4572a3fb47286cceda562e4dc2c894fc8b15ebef",
+    "arduino/BenchController/InputPanel.h": "a47b283690909a5a38181318e1ff0087f50d6cf3d4eda1ac89071ee2b24d6c9d",
+    "pi/beam_monitor.py": "b9884c60322e143e215a23c66c7cfa70b457228a4fc626f9e523b3182b736720",
+    "pi/bench_test.py": "ff8d9948854aa7736f95ec41cde8ca9eb3544537c572ae691de8ffe2a12ea943",
+    "pi/game_engine.py": "996e64d5109ab31f5158a9fefd83762fc28cbd51ae902ad93559fad1a7a87319",
+    "pi/game_reporting.py": "afb8555901b95f73cef02062baf987381fa822ffc2ded45494f32657e88a5f06",
+    "pi/game_test.py": "3aff3e56020135a14f65a3909186bed6e2551f4eeb5042e5ac5a18317370130f",
+    "pi/panel_game.py": "0cefcfe53c6c50e4d7d80748385990498177460c635e0156b517cce8ef7a2a5c",
+    "pi/panel_test.py": "521548d38923d0fa4d350fd84053fa525a92406634db315ada399faccc1850c1"
+  },
+  "public_source_sha256": {
+    "development/arduino/BenchController/BenchController.ino": "e9bee4b6d04a0c31f570ebed4572a3fb47286cceda562e4dc2c894fc8b15ebef",
+    "development/arduino/BenchController/InputPanel.h": "a47b283690909a5a38181318e1ff0087f50d6cf3d4eda1ac89071ee2b24d6c9d",
+    "development/pi/beam_monitor.py": "b9884c60322e143e215a23c66c7cfa70b457228a4fc626f9e523b3182b736720",
+    "development/pi/bench_test.py": "ff8d9948854aa7736f95ec41cde8ca9eb3544537c572ae691de8ffe2a12ea943",
+    "development/pi/game_engine.py": "996e64d5109ab31f5158a9fefd83762fc28cbd51ae902ad93559fad1a7a87319",
+    "development/pi/game_reporting.py": "afb8555901b95f73cef02062baf987381fa822ffc2ded45494f32657e88a5f06",
+    "development/pi/game_test.py": "3aff3e56020135a14f65a3909186bed6e2551f4eeb5042e5ac5a18317370130f",
+    "development/pi/panel_game.py": "0cefcfe53c6c50e4d7d80748385990498177460c635e0156b517cce8ef7a2a5c",
+    "development/pi/panel_test.py": "521548d38923d0fa4d350fd84053fa525a92406634db315ada399faccc1850c1"
+  }
+}
