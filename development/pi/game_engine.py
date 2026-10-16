@@ -115,7 +115,7 @@ class Game:
                     return
 
     def outputs(self, now):
-        if self.state not in ("starting", "running"):
+        if self.state != "running":
             return (False,) * self.settings.beam_count
         return tuple(not self.completed[i] and (self.reenable_at[i] is None or now >= self.reenable_at[i])
             for i in range(self.settings.beam_count))

@@ -1,7 +1,8 @@
-// Bench only: LED_BUILTIN represents a laser. No field outputs are connected.
+// Two-beam bench controller; D9 commands Nano module 1 (5V logic only).
 #include "InputPanel.h"
 const unsigned long WATCHDOG_MS = 1000;
-const char VERSION[] = "bench-0.10.0";
+const uint8_t MODULE1_PIN = 9; // Mega D9 -> Nano D2, with Nano-side 10k pulldown.
+const char VERSION[] = "bench-0.11.0";
 bool stableBroken = false;
 char command[32];
 unsigned int used = 0;
@@ -10,9 +11,14 @@ bool armed = false;
 bool ledOn = false;
 unsigned long lastHeartbeat = 0;
 
+void setLaserOutput(bool on) {
+  digitalWrite(LED_BUILTIN, on ? HIGH : LOW);
+  digitalWrite(MODULE1_PIN, on ? HIGH : LOW);
+  ledOn = on;
+}
+
 void disableOutput() {
-  digitalWrite(LED_BUILTIN, LOW);
-  ledOn = false;
+  setLaserOutput(false);
   armed = false;
   panelOff();
 }
@@ -39,16 +45,14 @@ void handleCommand() {
     }
   } else if (strcmp(command, "ON") == 0) {
     if (armed) {
-      digitalWrite(LED_BUILTIN, HIGH);
-      ledOn = true;
+      setLaserOutput(true);
       if (panelAutoLights) {digitalWrite(5, HIGH); panelColor(0, 255, 0);}
       Serial.println("OK ON");
     } else {
       Serial.println("ERR DISARMED");
     }
   } else if (strcmp(command, "PAUSE") == 0) {
-    digitalWrite(LED_BUILTIN, LOW);
-    ledOn = false;
+    setLaserOutput(false);
     if (panelAutoLights) {
       digitalWrite(5, LOW);
       if (armed) panelColor(255, 180, 0); else panelOff();
@@ -70,6 +74,9 @@ void handleCommand() {
 }
 
 void setup() {
+  digitalWrite(MODULE1_PIN, LOW);
+  pinMode(MODULE1_PIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
   pinMode(LED_BUILTIN, OUTPUT);
   panelBegin();
   stableBroken = panelStable[0];
