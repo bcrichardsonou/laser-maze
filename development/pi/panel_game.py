@@ -9,7 +9,7 @@ from pathlib import Path
 import time
 from game_engine import Game, Settings, MODES
 
-VERSION = "bench-0.12.0"
+VERSION = "bench-0.13.0"
 
 
 class Controls:
@@ -119,7 +119,7 @@ def main():
             replies.append((expected, time.monotonic() + 1))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.12.0")
+            initial("HELLO", "HELLO 1 bench-0.13.0")
             initial("KEYPAD", "KEYPAD READY")
             # Initialize all levels BEFORE enabling event subscription.
             port.write(b"INPUTS\n"); port.flush()
@@ -136,10 +136,10 @@ def main():
             previous = None
             shown = None
             print("PHYSICAL PANEL: 1 USB | 2 USB break-all | 3 keys | 4 keys break-all", flush=True)
-            print("A starts; D stops. Release both beam buttons before starting.", flush=True)
+            print("A starts; D stops. Clear the A0 receiver beam and release the beam 2 button before starting.", flush=True)
             print("Portal maintenance requires local C confirmation. C renews test enable; D cancels tests/sound; B exits maintenance locally.",flush=True)
             print("Latch requires a fresh OFF→ON during RUNNING. Keys objective: 1,3,2,4.", flush=True)
-            print("Mega D9 = Nano module 1 / beam 1; built-in LED = beam 1; D5 = beam 2; RGB = combined status.", flush=True)
+            print("Beam 1 input = calibrated TEMT6000 A0; Mega D9 = Nano module 1 / beam 1; built-in LED = beam 1; D5 = beam 2; RGB = combined status.", flush=True)
             print("FAST DEMO 2/30/2/1 seconds" if args.fast else "Normal timing 5/150/7/5 seconds", flush=True)
             while True:
                 now = time.monotonic()

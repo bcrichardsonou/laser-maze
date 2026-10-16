@@ -5,8 +5,8 @@ import fcntl
 from pathlib import Path
 import time
 
-VERSION = "bench-0.12.0"
-LABELS = ("Beam button 1 (D2)", "Beam button 2 (D3)", "USB objective latch (D4)")
+VERSION = "bench-0.13.0"
+LABELS = ("Beam 1 TEMT6000 receiver (A0)", "Beam button 2 (D3)", "USB objective latch (D4)")
 
 
 def describe(line):
@@ -53,7 +53,7 @@ def main():
         try:
             time.sleep(2)
             port.reset_input_buffer()
-            exchange("HELLO", "HELLO 1 bench-0.12.0")
+            exchange("HELLO", "HELLO 1 bench-0.13.0")
             exchange("KEYPAD", "KEYPAD READY")
             exchange("ARM", "OK ARM")
             print("Panel diagnostic. The simulated laser stays OFF.", flush=True)
