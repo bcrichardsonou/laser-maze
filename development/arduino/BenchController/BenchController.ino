@@ -2,7 +2,7 @@
 #include "InputPanel.h"
 const unsigned long WATCHDOG_MS = 1000;
 const uint8_t MODULE1_PIN = 9; // Mega D9 -> Nano D2, with Nano-side 10k pulldown.
-const char VERSION[] = "bench-0.11.0";
+const char VERSION[] = "bench-0.12.0";
 bool stableBroken = false;
 char command[32];
 unsigned int used = 0;
@@ -61,6 +61,9 @@ void handleCommand() {
   } else if (strcmp(command, "OFF") == 0) {
     disableOutput();
     Serial.println("OK OFF");
+  } else if (strcmp(command, "LIGHT") == 0) {
+    Serial.print("LIGHT A0 ");
+    Serial.println(analogRead(A0)); // Read only; allowed while disarmed.
   } else if (strcmp(command, "BEAM") == 0) {
     Serial.println(stableBroken ? "BEAM BROKEN" : "BEAM CLEAR");
   } else if (strcmp(command, "STATUS") == 0) {
