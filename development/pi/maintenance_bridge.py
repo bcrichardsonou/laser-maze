@@ -162,7 +162,8 @@ class Bridge:
             live['service_grant']=self.grant(connected=False)
             if time.time()>=self.next_permission_check:
                 self.next_permission_check=time.time()+60
-                self.reboot_supported=subprocess.run(['sudo','-n','-l','/usr/bin/systemctl','reboot','--no-block'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2).returncode==0
+                permission=subprocess.run(['sudo','-n','-ll','/usr/bin/systemctl','reboot','--no-block'],capture_output=True,text=True,timeout=2)
+                self.reboot_supported=permission.returncode==0 and 'Options: !authenticate' in permission.stdout
             live['reboot_supported']=self.reboot_supported
             return live
         except (OSError,ValueError,subprocess.SubprocessError):return None

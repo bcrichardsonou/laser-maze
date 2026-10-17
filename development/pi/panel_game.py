@@ -9,7 +9,7 @@ from pathlib import Path
 import time
 from game_engine import Game, Settings, MODES
 
-VERSION = "bench-0.15.0"
+VERSION = "bench-0.15.1"
 
 
 class Controls:
@@ -135,7 +135,7 @@ def main():
             replies.append((expected, time.monotonic() + 1, callback))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.15.0")
+            initial("HELLO", "HELLO 1 bench-0.15.1")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
