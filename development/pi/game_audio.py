@@ -43,6 +43,7 @@ class Audio:
         self.backend = shutil.which('pw-play') or shutil.which('aplay')
         self.enabled = os.environ.get('ZOCO_AUDIO_ENABLED', '0') == '1'
         self.muted = False
+        self.volume = 1.0
         self.process = None
         self.pending = deque(maxlen=3)
         self.last_cue = 'none'
@@ -109,6 +110,7 @@ class Audio:
         if Path(self.backend).name == 'aplay': command += ['-q']
         target = os.environ.get('ZOCO_AUDIO_TARGET')
         if target and Path(self.backend).name == 'pw-play': command += ['--target', target]
+        if Path(self.backend).name == 'pw-play': command += ['--volume', str(self.volume)]
         command += [str(self.paths[cue])]
         try:
             self.process = subprocess.Popen(command, env=self.environment,

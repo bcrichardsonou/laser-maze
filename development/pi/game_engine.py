@@ -13,10 +13,13 @@ class Settings:
     cooldown: float = 7
     warmup: float = 5
     max_breaks: int = 3
+    enabled_beams: tuple = ()
 
     def __post_init__(self):
         if not isinstance(self.beam_count, int) or not 1 <= self.beam_count <= 32:
             raise ValueError("Beam count must be 1–32")
+        if self.enabled_beams and (len(self.enabled_beams)!=self.beam_count or any(type(v) is not bool for v in self.enabled_beams) or not any(self.enabled_beams)):
+            raise ValueError("Invalid enabled beams")
         if not isinstance(self.max_breaks, int) or self.max_breaks < 1:
             raise ValueError("Break limit must be positive")
         for value in (self.startup, self.duration, self.cooldown, self.warmup):
@@ -52,7 +55,7 @@ class Game:
     def start(self, now):
         if self.state != "idle":
             raise ValueError("Create a new game to restart")
-        self.enabled = [not broken for broken in self.broken]
+        self.enabled = [configured and not broken for configured,broken in zip(self.settings.enabled_beams or [True]*self.settings.beam_count,self.broken)]
         if not any(self.enabled):
             self.finish("no_beams_available", fault=True)
             return

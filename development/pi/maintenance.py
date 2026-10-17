@@ -3,12 +3,16 @@ import json
 from pathlib import Path
 import re
 import time
+import uuid
+from dataclasses import asdict
+from operator_settings import validate_settings,validate_thresholds,DEFAULT_SETTINGS
+from receiver_calibrate import propose,summarize
 from game_audio import MEDIA
 from game_reporting import atomic_json
 
 ID = re.compile(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\Z')
 COLORS = ('RED','GREEN','BLUE','YELLOW','PURPLE','OFF')
-ACTIONS = ('enter_maintenance','leave_maintenance','stop_game','snapshot','audio_play','stop_audio','audio_mute','rgb_test','display_test','restart_game')
+ACTIONS = ('enter_maintenance','leave_maintenance','stop_game','snapshot','audio_play','stop_audio','audio_mute','rgb_test','display_test','restart_game','receiver_capture','receiver_apply','receiver_thresholds','module_test','game_settings','start_lock','audio_volume','audio_output_test','service_start','service_stop','reboot_pi','software_reinstall')
 
 
 def validate(command, identity, wall):
@@ -26,6 +30,16 @@ def validate(command, identity, wall):
         if set(p)!= {'muted'} or type(p['muted']) is not bool: raise ValueError('invalid_parameters')
     elif action=='rgb_test':
         if set(p)!= {'color'} or p['color'] not in COLORS: raise ValueError('invalid_color')
+    elif action=='receiver_capture':
+        if set(p)!={'phase'} or p['phase'] not in ('blocked','clear','blocked_check'):raise ValueError('invalid_capture_phase')
+    elif action=='receiver_apply':
+        if set(p)!={'candidate_id'} or not isinstance(p['candidate_id'],str) or not ID.fullmatch(p['candidate_id']):raise ValueError('invalid_calibration_candidate')
+    elif action=='receiver_thresholds':validate_thresholds(p)
+    elif action=='game_settings':validate_settings(p)
+    elif action=='start_lock':
+        if set(p)!={'locked'} or type(p['locked']) is not bool:raise ValueError('invalid_start_lock')
+    elif action=='audio_volume':
+        if set(p)!={'percent'} or type(p['percent']) is not int or not 0<=p['percent']<=100:raise ValueError('invalid_volume')
     elif p: raise ValueError('invalid_parameters')
     return action,p
 
@@ -35,27 +49,81 @@ class Maintenance:
         self.folder=Path(folder);self.identity=identity;self.audio=audio;self.effects=effects;self.wall=wall
         for name in ('inbox','results','outbox'):(self.folder/name).mkdir(parents=True,exist_ok=True,mode=0o700)
         self.enabled=False;self.local_until=0;self.pending=None;self.test=None;self.next_scan=0
+        self.send=None;self.raw=None;self.raw_at=-100;self.last_key='none';self.last_key_at=0;self.connected=False
+        self.thresholds=dict(break_below=20,clear_above=41);self.capture_values={};self.candidate=None;self.next_live=0
+        self.volume=100;self.play_locked=False;self.saved_settings=None
+        receiver_file=self.folder/'receiver-settings.json'
+        if receiver_file.exists():self.thresholds=validate_thresholds(json.loads(receiver_file.read_text())['thresholds'])
+        settings_file=self.folder/'game-settings.json'
+        if settings_file.exists():self.saved_settings=validate_settings(json.loads(settings_file.read_text()))
+
         try:
             saved=json.loads((self.folder/'state.json').read_text())
             self.enabled=saved.get('enabled') is True
             self.local_until=float(saved.get('local_until',0))
             self.audio.muted=self.effects.muted=saved.get('muted') is True
+            self.play_locked=saved.get('play_locked') is True
+            volume=saved.get('volume',100)
+            self.volume=volume if type(volume) is int and 0<=volume<=100 else 100
+            self.audio.volume=self.effects.volume=self.volume/100
         except (OSError,ValueError,TypeError):pass
 
     def save(self):
-        atomic_json(self.folder/'state.json',dict(enabled=self.enabled,local_until=self.local_until,muted=self.audio.muted))
+        self.next_live=0
+        atomic_json(self.folder/'state.json',dict(enabled=self.enabled,local_until=self.local_until,muted=self.audio.muted,volume=self.volume,play_locked=self.play_locked))
 
     def local_enabled(self):return self.enabled and self.wall()<self.local_until
 
     def metrics(self):
-        return dict(maintenance_protocol=1,maintenance_enabled=self.enabled,
+        return dict(maintenance_protocol=2,maintenance_enabled=self.enabled,
             maintenance_local_enabled=self.local_enabled(),maintenance_pending=self.pending is not None,
             maintenance_test_active=self.test is not None)
 
+    def configure_controls(self,controls):
+        controls.play_locked=self.play_locked
+        if self.saved_settings:controls.configure(self.saved_settings)
+
+    def receive_light(self,value,now):
+        self.raw=value;self.raw_at=now
+        if self.test and self.test['kind']=='capture' and len(self.test['values'])<100:self.test['values'].append(value)
+
+    def live(self,controls,now):
+        settings=asdict(controls.settings);settings.pop('beam_count',None)
+        settings['enabled_beams']=list(controls.settings.enabled_beams or (True,True));settings['available_modes']=list(controls.allowed_modes)
+        return dict(device_id=self.identity,sampled_at=int(self.wall()),protocol=2,connected=self.connected,
+            **self.metrics(),local_until=int(self.local_until),play_locked=self.play_locked,
+            receiver=dict(pin='A0',raw=self.raw if now-self.raw_at<1 else None,blocked=controls.levels[0],thresholds=self.thresholds,
+                captures={key:summarize(v) for key,v in self.capture_values.items()},candidate=self.candidate),
+            settings=settings,inputs=list(controls.levels),last_key=self.last_key,last_key_at=int(self.last_key_at),
+            audio=dict(volume=self.volume,muted=self.audio.muted,backend=str(self.audio.backend or 'unavailable'),output_device=self.audio.environment.get('ZOCO_AUDIO_TARGET','configured default') if hasattr(self.audio,'environment') else 'configured default'),
+            capabilities=dict(module_count=1,module_pixels=16,ring_customization=False,laser_switching=False,rfid=False,hazer=False,door=False),
+            firmware_version=getattr(self,'version','unconfirmed'),python_version=getattr(self,'version','unconfirmed'),serial_port=getattr(self,'serial_port','unconfirmed'),
+            test=self.test['kind'] if self.test else 'none',capture_samples=len(self.test['values']) if self.test and self.test['kind']=='capture' else 0)
+
+    def publish(self,controls,now):
+        if now>=self.next_live:
+            self.next_live=now+(1 if self.enabled or self.pending else 5)
+            atomic_json(self.folder/'live.json',self.live(controls,now))
+
+    def apply_thresholds(self,command,thresholds,controls,now):
+        if not self.send:self.complete(command,'failed','serial_not_ready',controls);return
+        previous=dict(self.thresholds)
+        self.test=dict(kind='apply',command=command,until=now+2)
+        def acknowledged():
+            if not self.test or self.test['command']['id']!=command['id']:
+                self.send('CAL {break_below} {clear_above}'.format(**previous),'OK CAL {break_below} {clear_above}'.format(**previous));return
+            record=dict(thresholds=thresholds,applied_at=int(self.wall()),command_id=command['id'],candidate=self.candidate)
+            atomic_json(self.folder/'receiver-settings.json',record)
+            self.thresholds=dict(thresholds);self.test=None
+            self.complete(command,'completed','receiver_thresholds_applied',controls)
+        text='CAL {break_below} {clear_above}'.format(**thresholds)
+        self.send(text,'OK '+text,acknowledged)
+
     def complete(self,command,status,reason,controls):
+        self.next_live=0
         path=self.folder/'results'/(command['id']+'.json')
         if not path.exists():atomic_json(path,dict(id=command['id'],device_id=self.identity,status=status,reason=reason,
-            executed_at=int(self.wall()),snapshot=dict(self.metrics(),inputs=list(controls.levels),game_running=controls.game is not None)))
+            executed_at=int(self.wall()),snapshot=dict(self.metrics(),inputs=list(controls.levels),game_running=controls.game is not None,receiver=dict(raw=self.raw,thresholds=self.thresholds,captures={k:summarize(v) for k,v in self.capture_values.items()},candidate=self.candidate),play_locked=self.play_locked,volume=self.volume)))
         atomic_json(self.folder/'outbox'/path.name,json.loads(path.read_text()))
         (self.folder/'inbox'/(command['id']+'.json')).unlink(missing_ok=True)
 
@@ -89,6 +157,7 @@ class Maintenance:
 
     def display(self):
         if self.test and self.test['kind']=='rgb':return False,False,0,self.test['color']
+        if self.test and self.test['kind']=='module':return True,False,0,'BLUE'
         if self.test and self.test['kind']=='display':return False,False,5999,'BLUE'
         return False,False,0,'BLUE' if self.enabled else 'YELLOW'
 
@@ -99,10 +168,21 @@ class Maintenance:
         if self.test:
             test=self.test
             if test['command']['expires_at']<=wall or not self.local_enabled():self.cancel_test(controls,'local_enable_expired')
+            elif test['kind']=='capture':
+                if len(test['values'])>=100:
+                    phase=test['phase'];self.capture_values[phase]=list(test['values'])
+                    if set(self.capture_values)=={'blocked','clear','blocked_check'}:
+                        result=propose(self.capture_values['blocked'],self.capture_values['clear'],self.capture_values['blocked_check'])
+                        self.candidate=dict(id=str(uuid.uuid4()),created_at=int(wall),proposal=result)
+                    atomic_json(self.folder.parent/'calibration'/('portal-'+test['command']['id']+'.json'),dict(phase=phase,readings=test['values'],captured_at=int(wall),candidate=self.candidate,applied_to_game=False))
+                    self.test=None;self.complete(test['command'],'completed','receiver_sample_captured',controls)
+                elif now>test['until']:self.cancel_test(controls,'receiver_sample_timeout')
+            elif test['kind']=='apply':
+                if now>test['until']:self.cancel_test(controls,'receiver_apply_unconfirmed')
             elif test['kind']=='audio':
                 if self.audio.error:
                     self.stop_audio();self.complete(test['command'],'failed',self.audio.error,controls);self.test=None
-                elif getattr(self.audio,'process',None) is None and not getattr(self.audio,'pending',[]) and getattr(self.audio,'last_cue',None)==test['command']['params']['clip']:
+                elif getattr(self.audio,'process',None) is None and not getattr(self.audio,'pending',[]) and getattr(self.audio,'last_cue',None)==test.get('clip',test['command']['params'].get('clip','entrance')):
                     self.complete(test['command'],'completed','playback_finished_speaker_unconfirmed',controls);self.test=None
                 elif now>test['until']:
                     self.stop_audio();self.complete(test['command'],'failed','audio_test_timeout',controls);self.test=None
@@ -134,7 +214,7 @@ class Maintenance:
                 if self.pending:self.complete(self.pending,'failed','cancelled',controls);self.pending=None
                 self.complete(command,'completed','game_stopped',controls)
                 for other in commands:
-                    if other['action'] in ('enter_maintenance','audio_play','rgb_test','display_test','restart_game') and not (self.folder/'results'/(other['id']+'.json')).exists():self.complete(other,'failed','cancelled_by_stop',controls)
+                    if other['action'] not in ('stop_game','stop_audio','snapshot','leave_maintenance') and not (self.folder/'results'/(other['id']+'.json')).exists():self.complete(other,'failed','cancelled_by_stop',controls)
             elif action=='stop_audio':
                 self.cancel_test(controls);self.complete(command,'completed','sound_stopped',controls)
                 for other in commands:
@@ -151,17 +231,45 @@ class Maintenance:
                 if self.pending:self.complete(self.pending,'failed','cancelled',controls);self.pending=None
                 self.enabled=False;self.local_until=0;controls.result=None;self.save()
                 self.complete(command,'completed','returned_to_idle',controls)
+            elif action=='start_lock':
+                self.play_locked=params['locked'];controls.play_locked=self.play_locked;self.save()
+                self.complete(command,'completed','new_games_disabled' if self.play_locked else 'new_games_enabled',controls)
             elif not self.local_enabled():self.complete(command,'failed','press_C_in_maintenance_first',controls)
             elif self.test:self.complete(command,'failed','test_busy',controls)
+            elif action=='receiver_capture':
+                phase=params['phase']
+                if phase=='blocked':self.capture_values={};self.candidate=None
+                if (phase=='clear' and 'blocked' not in self.capture_values) or (phase=='blocked_check' and not {'blocked','clear'}.issubset(self.capture_values)):
+                    self.complete(command,'failed','capture_blocked_then_clear_then_blocked_check',controls)
+                elif now-self.raw_at>1:self.complete(command,'failed','receiver_data_not_ready',controls)
+                else:self.test=dict(kind='capture',command=command,phase=phase,values=[],until=now+12)
+            elif action=='receiver_apply':
+                candidate=self.candidate
+                if not candidate or candidate['id']!=params['candidate_id'] or wall-candidate['created_at']>1800 or not candidate['proposal']['usable']:
+                    self.complete(command,'failed','calibration_candidate_invalid_or_stale',controls)
+                else:self.apply_thresholds(command,dict(break_below=candidate['proposal']['proposed_break_threshold'],clear_above=candidate['proposal']['proposed_clear_threshold']),controls,now)
+            elif action=='receiver_thresholds':self.apply_thresholds(command,params,controls,now)
+            elif action=='game_settings':
+                value=validate_settings(params);atomic_json(self.folder/'game-settings.json',value)
+                controls.configure(value);self.saved_settings=value
+                self.complete(command,'completed','game_settings_saved',controls)
+            elif action=='audio_volume':
+                if not self.audio.backend or not str(self.audio.backend).endswith('pw-play'):
+                    self.complete(command,'failed','volume_requires_pipewire_player',controls)
+                else:
+                    self.volume=params['percent'];self.audio.volume=self.effects.volume=self.volume/100;self.stop_audio();self.save()
+                    self.complete(command,'completed','audio_playback_level_saved',controls)
+            elif action=='module_test':self.test=dict(kind='module',command=command,until=now+5)
             elif action=='audio_mute':
                 self.audio.muted=self.effects.muted=params['muted'];self.stop_audio();self.save()
                 self.complete(command,'completed','audio_muted' if params['muted'] else 'audio_unmuted',controls)
-            elif action=='audio_play':
+            elif action in ('audio_play','audio_output_test'):
+                if action=='audio_output_test':params={'clip':'entrance'}
                 if not self.audio.enabled or self.audio.muted or not self.audio.assets_ready or not self.audio.backend:
                     self.complete(command,'failed','audio_not_ready_or_muted',controls)
                 else:
                     self.effects.cancel();self.audio.error='';self.audio.queue(params['clip'],priority=True)
-                    self.test=dict(command=command,kind='audio',until=now+self.audio.durations[params['clip']]+3)
+                    self.test=dict(command=command,kind='audio',clip=params['clip'],until=now+self.audio.durations[params['clip']]+3)
             elif action in ('rgb_test','display_test'):
                 self.test=dict(command=command,kind='rgb' if action=='rgb_test' else 'display',color=params.get('color','BLUE'),until=now+5)
             else:self.complete(command,'failed','restart_is_bridge_action',controls)
