@@ -38,6 +38,7 @@ class Game:
         self.key_progress = 0
         self.objective = False
         self.broken = [False] * self.settings.beam_count
+        self.enabled = [True] * self.settings.beam_count
         self.completed = [False] * self.settings.beam_count
         self.reenable_at = [None] * self.settings.beam_count
         self.monitor_at = [None] * self.settings.beam_count
@@ -51,8 +52,9 @@ class Game:
     def start(self, now):
         if self.state != "idle":
             raise ValueError("Create a new game to restart")
-        if any(self.broken):
-            self.finish("startup_blocked", fault=True)
+        self.enabled = [not broken for broken in self.broken]
+        if not any(self.enabled):
+            self.finish("no_beams_available", fault=True)
             return
         self.state = "starting"
         self.running_at = now + self.settings.startup
@@ -84,13 +86,14 @@ class Game:
             self.check_win()
 
     def check_win(self):
-        if self.objective and (not self.break_all or all(self.completed)):
+        if self.objective and (not self.break_all or all(not enabled or done for enabled, done in zip(self.enabled, self.completed))):
             self.finish("win")
 
     def tick(self, now):
         if self.state == "starting" and now >= self.running_at:
-            if any(self.broken):
-                self.finish("startup_blocked", fault=True)
+            self.enabled = [enabled and not broken for enabled, broken in zip(self.enabled, self.broken)]
+            if not any(self.enabled):
+                self.finish("no_beams_available", fault=True)
                 return
             self.state = "running"
         if self.state != "running":
@@ -99,7 +102,7 @@ class Game:
             self.finish("timeout")
             return
         for i, broken in enumerate(self.broken):
-            if self.completed[i] or (self.monitor_at[i] is not None and now < self.monitor_at[i]):
+            if not self.enabled[i] or self.completed[i] or (self.monitor_at[i] is not None and now < self.monitor_at[i]):
                 continue
             if broken:
                 self.breaks += 1
@@ -117,7 +120,7 @@ class Game:
     def outputs(self, now):
         if self.state != "running":
             return (False,) * self.settings.beam_count
-        return tuple(not self.completed[i] and (self.reenable_at[i] is None or now >= self.reenable_at[i])
+        return tuple(self.enabled[i] and not self.completed[i] and (self.reenable_at[i] is None or now >= self.reenable_at[i])
             for i in range(self.settings.beam_count))
 
     def remaining(self, now):

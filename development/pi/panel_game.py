@@ -9,7 +9,7 @@ from pathlib import Path
 import time
 from game_engine import Game, Settings, MODES
 
-VERSION = "bench-0.13.1"
+VERSION = "bench-0.14.0"
 
 
 class Controls:
@@ -20,6 +20,7 @@ class Controls:
         self.mode = MODES[0]
         self.game = None
         self.result = None
+        self.last_enabled = None
 
     def inputs(self, levels, now):
         rising = levels[2] and not self.levels[2]
@@ -51,6 +52,7 @@ class Controls:
             self.game.tick(now)
             if self.game.state in ("finished", "fault"):
                 if self.reporting: self.reporting.finish(self.game, now)
+                self.last_enabled = list(self.game.enabled)
                 self.result = (self.game.outcome, self.game.breaks)
                 self.game = None
 
@@ -61,7 +63,8 @@ class Controls:
         outputs = game.outputs(now)
         color = "GREEN"
         if game.state == "starting": color = "YELLOW"
-        elif not all(outputs): color = "RED"
+        elif any(enabled and not on for enabled, on in zip(game.enabled, outputs)): color = "RED"
+        elif not all(game.enabled): color = "YELLOW"
         elif any(t is not None and now < t for t in game.monitor_at): color = "YELLOW"
         return (*outputs, math.ceil(game.remaining(now)), color)
 
@@ -119,7 +122,7 @@ def main():
             replies.append((expected, time.monotonic() + 1))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.13.1")
+            initial("HELLO", "HELLO 1 bench-0.14.0")
             initial("KEYPAD", "KEYPAD READY")
             # Initialize all levels BEFORE enabling event subscription.
             port.write(b"INPUTS\n"); port.flush()
@@ -136,7 +139,7 @@ def main():
             previous = None
             shown = None
             print("PHYSICAL PANEL: 1 USB | 2 USB break-all | 3 keys | 4 keys break-all", flush=True)
-            print("A starts; D stops. Clear the A0 receiver beam and release the beam 2 button before starting.", flush=True)
+            print("A starts; D stops. Unavailable beams are excluded at startup; at least one beam must be available.", flush=True)
             print("Portal maintenance requires local C confirmation. C renews test enable; D cancels tests/sound; B exits maintenance locally.",flush=True)
             print("Latch requires a fresh OFF→ON during RUNNING. Keys objective: 1,3,2,4.", flush=True)
             print("Beam 1 input = calibrated TEMT6000 A0; Mega D9 = Nano module 1 / beam 1; built-in LED = beam 1; D5 = beam 2; RGB = combined status.", flush=True)
@@ -179,10 +182,10 @@ def main():
                     send("INPUTS", "INPUTS"); send("KEYPAD", "KEYPAD READY"); next_poll = now + 0.5
                 g = controls.game
                 status = (controls.mode, g.state if g else "idle", desired[2], g.breaks if g else 0,
-                    g.key_progress if g else 0, g.objective if g else False, controls.result)
+                    g.key_progress if g else 0, g.objective if g else False, controls.result, tuple(g.enabled if g else (controls.last_enabled or [])))
                 if status != shown:
                     if controls.result: print(f"RESULT: {controls.result[0]} | breaks {controls.result[1]} | A to play again", flush=True)
-                    elif g: print(f"{g.state.upper()} | {desired[2]}s | breaks {g.breaks}/3 | keys {g.key_progress}/4 | objective {g.objective}", flush=True)
+                    elif g: print(f"{g.state.upper()} | {desired[2]}s | breaks {g.breaks}/3 | keys {g.key_progress}/4 | objective {g.objective} | excluded beams {','.join(str(i+1) for i,v in enumerate(g.enabled) if not v) or 'none'}", flush=True)
                     else: print(f"IDLE — selected {controls.mode}; A to start", flush=True)
                     shown = status
         except KeyboardInterrupt: print("\nPanel game stopped.", flush=True)

@@ -60,6 +60,8 @@ class Reporting:
         self.games_this_run += 1
         start = dict(session_id=self.session, bench_prototype=True, fast_demo=self.fast,
             mode=game.mode, configured_beams=game.settings.beam_count,
+            enabled_beams=[i+1 for i,v in enumerate(game.enabled) if v],
+            excluded_beams=[i+1 for i,v in enumerate(game.enabled) if not v],
             configured_duration_seconds=game.settings.duration, python_version=self.version,
             firmware_version=self.version)
         atomic_json(self.active, dict(session_id=self.session, start=start))
@@ -72,7 +74,9 @@ class Reporting:
         final = dict(record["start"], outcome=outcome or game.outcome,
             elapsed_seconds=round(min(elapsed, game.settings.duration), 3),
             break_count=game.breaks, key_progress=game.key_progress,
-            objective_completed=game.objective)
+            objective_completed=game.objective,
+            enabled_beams=[i+1 for i,v in enumerate(game.enabled) if v],
+            excluded_beams=[i+1 for i,v in enumerate(game.enabled) if not v])
         record["final"] = final
         atomic_json(self.active, record)
         self.emit("bench_game_result", final, self.result_id(self.session))
@@ -81,8 +85,8 @@ class Reporting:
         self.results_this_run += 1
 
     def status(self, controls, desired, now, connected=True, fault="", stopped=False, audio=None, maintenance=None):
-        if not fault and not stopped and controls.result and controls.result[0] == "startup_blocked":
-            fault = "startup_blocked"
+        if not fault and not stopped and controls.result and controls.result[0] in ("startup_blocked", "no_beams_available"):
+            fault = controls.result[0]
         game = controls.game
         phase = "fault" if fault else "stopped" if stopped else game.state if game else "finished" if controls.result else "idle"
         metrics = dict(bench_prototype=True, fast_demo=self.fast, game_phase=phase, game_mode=controls.mode,
@@ -93,6 +97,10 @@ class Reporting:
             beam1_input_active=controls.levels[0], beam2_input_active=controls.levels[1], latch_active=controls.levels[2],
             beam1_commanded_on=desired[0], beam2_commanded_on=desired[1], rgb_requested=desired[3],
             bench_games_this_run=self.games_this_run, bench_results_this_run=self.results_this_run)
+        enabled = game.enabled if game else getattr(controls, "last_enabled", None)
+        if enabled is not None:
+            metrics["active_beams"] = sum(enabled)
+            metrics["excluded_beams"] = ",".join(str(i+1) for i,v in enumerate(enabled) if not v)
         if self.session: metrics["session_id"] = self.session
         if controls.result: metrics["last_result"] = controls.result[0]
         if audio: metrics.update(audio)
