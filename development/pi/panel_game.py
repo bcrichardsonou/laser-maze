@@ -9,12 +9,15 @@ from pathlib import Path
 import time
 from game_engine import Game, Settings, MODES
 
-VERSION = "bench-0.16.0"
+VERSION = "bench-0.16.1"
 
 
 class Controls:
     def __init__(self, fast=False, reporting=None):
         self.reporting = reporting
+        self.fast = fast
+        self.admission = 0 if fast else 5
+        self.result_red_at = 0
         self.settings = Settings(beam_count=2, startup=2, duration=30, cooldown=2, warmup=1) if fast else Settings(beam_count=2)
         self.levels = [False, False, False]
         self.mode = MODES[0]
@@ -41,7 +44,7 @@ class Controls:
 
     def key(self, key, now):
         self.tick(now)
-        if self.game and self.game.state in ("starting", "running"):
+        if self.game and self.game.state in ("starting", "admitting", "running"):
             if key == "D": self.game.finish("stopped")
             elif key in "1234": self.game.key(int(key), now)
             return
@@ -51,8 +54,8 @@ class Controls:
             self.mode = selected
             self.result = None
         elif key == "A":
-            if self.play_locked:return
-            self.game = Game(self.mode, self.settings, powered_startup=True)
+            if self.play_locked or (self.result and now < self.result_red_at):return
+            self.game = Game(self.mode, self.settings, powered_startup=True, admission=self.admission)
             self.game.broken = list(self.levels[:2])
             self.game.start(now)
             if self.reporting: self.reporting.begin(self.game, now)
@@ -66,19 +69,20 @@ class Controls:
                 if self.reporting: self.reporting.finish(self.game, now)
                 self.last_enabled = list(self.game.enabled)
                 self.result = (self.game.outcome, self.game.breaks)
+                self.result_red_at = now + (0 if self.fast else 10 if self.game.outcome == "win" else 5 if self.game.outcome in ("timeout", "beam_limit") else 0)
                 self.game = None
 
     def display(self, now):
         if not self.game:
-            return (False, False, 0, "GREEN" if self.result and self.result[0] == "win" else "RED" if self.result else "PURPLE")
+            # Completion/exit delay keeps the occupied indication; beam feedback belongs to modules.
+            color = "BLUE" if self.result and now < self.result_red_at else "RED"
+            return (False, False, 0, color)
         game = self.game
         outputs = game.outputs(now)
-        color = "GREEN"
-        if game.state == "starting": color = "YELLOW"
-        elif any(enabled and not on for enabled, on in zip(game.enabled, outputs)): color = "RED"
-        elif not all(game.enabled): color = "YELLOW"
-        elif any(t is not None and now < t for t in game.monitor_at): color = "YELLOW"
-        return (*outputs, math.ceil(game.remaining(now)), color)
+        color = "YELLOW" if game.state == "starting" else "GREEN" if game.state == "admitting" else "BLUE"
+        countdown = math.ceil(game.remaining(now)) if game.state == "running" else 0
+        return (*outputs, countdown, color)
+
 
 
 def main():
@@ -135,7 +139,7 @@ def main():
             replies.append((expected, time.monotonic() + 1, callback))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.16.0")
+            initial("HELLO", "HELLO 1 bench-0.16.1")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
@@ -154,7 +158,7 @@ def main():
             previous = None
             shown = None
             print("PHYSICAL PANEL: 1 USB | 2 USB break-all | 3 keys | 4 keys break-all", flush=True)
-            print("A starts a powered preparation check; D stops. Beams still blocked after preparation are excluded; at least one must be available.", flush=True)
+            print("A starts a powered preparation check, then five-second admission before the countdown; D stops. Beams still blocked after preparation are excluded; at least one must be available.", flush=True)
             print("Portal maintenance requires local C confirmation. C renews test enable; D cancels tests/sound; B exits maintenance locally.",flush=True)
             print("Latch requires a fresh OFF→ON during RUNNING. Keys objective: 1,3,2,4.", flush=True)
             print("Beam 1 input = calibrated TEMT6000 A0; Mega D9 = Nano module 1 / beam 1; built-in LED = beam 1; D5 = beam 2; RGB = combined status.", flush=True)

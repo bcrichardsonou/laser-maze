@@ -30,10 +30,13 @@ class Settings:
 class Game:
     KEY_ORDER = (1, 3, 2, 4)
 
-    def __init__(self, mode="usb", settings=None, powered_startup=False):
+    def __init__(self, mode="usb", settings=None, powered_startup=False, admission=0):
         if mode not in MODES:
             raise ValueError("Unknown game mode")
         self.mode = mode
+        if not math.isfinite(admission) or admission < 0: raise ValueError("Invalid admission interval")
+        self.admission = admission
+        self.prepared_at = None
         self.powered_startup = powered_startup
         self.settings = settings or Settings()
         self.state = "idle"
@@ -61,7 +64,8 @@ class Game:
             self.finish("no_beams_available", fault=True)
             return
         self.state = "starting"
-        self.running_at = now + self.settings.startup
+        self.prepared_at = now + self.settings.startup
+        self.running_at = self.prepared_at + self.admission
         self.deadline = self.running_at + self.settings.duration
 
     def finish(self, outcome, fault=False):
@@ -94,11 +98,13 @@ class Game:
             self.finish("win")
 
     def tick(self, now):
-        if self.state == "starting" and now >= self.running_at:
+        if self.state == "starting" and now >= self.prepared_at:
             self.enabled = [enabled and not broken for enabled, broken in zip(self.enabled, self.broken)]
             if not any(self.enabled):
                 self.finish("no_beams_available", fault=True)
                 return
+            self.state = "admitting" if now < self.running_at else "running"
+        if self.state == "admitting" and now >= self.running_at:
             self.state = "running"
         if self.state != "running":
             return
@@ -122,7 +128,7 @@ class Game:
                     return
 
     def outputs(self, now):
-        if self.state == "starting" and self.powered_startup:
+        if self.state == "admitting" or (self.state == "starting" and self.powered_startup):
             return tuple(self.enabled)
         if self.state != "running":
             return (False,) * self.settings.beam_count

@@ -17,7 +17,7 @@ def expect(port, command, reply):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", action="version", version="bench-0.16.0")
+    parser.add_argument("--version", action="version", version="bench-0.16.1")
     parser.add_argument("port")
     args = parser.parse_args()
     import serial
@@ -36,7 +36,7 @@ def main():
         port.reset_input_buffer()
         port.timeout = 2
         try:
-            expect(port, "HELLO", "HELLO 1 bench-0.16.0")
+            expect(port, "HELLO", "HELLO 1 bench-0.16.1")
             expect(port, "BEAM", "BEAM CLEAR")
             expect(port, "ARM", "OK ARM")
             # Input events may occur between command acknowledgments, so handle
