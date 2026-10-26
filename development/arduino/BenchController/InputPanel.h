@@ -15,7 +15,8 @@ unsigned long keypadPollAt = 0;
 char rawKey = 'N', stableKey = 'N';
 unsigned long keyChangedAt = 0;
 const char SOFT_KEYMAP[] = "DCBA#9630852*741";
-Adafruit_NeoPixel panelPixel(1, 6, NEO_GRB + NEO_KHZ800);
+const uint8_t STATUS_PIXEL_COUNT = 8;
+Adafruit_NeoPixel panelPixel(STATUS_PIXEL_COUNT, 6, NEO_GRB + NEO_KHZ800);
 TM1637Display panelTimer(7, 8);
 
 bool panelTime(const char *text) {
@@ -33,7 +34,7 @@ bool panelTime(const char *text) {
 void panelColor(uint8_t r, uint8_t g, uint8_t b) {
   uint32_t color = panelPixel.Color(r, g, b);
   if (panelPixel.getPixelColor(0) != color) {
-    panelPixel.setPixelColor(0, color);
+    for (uint8_t i = 0; i < STATUS_PIXEL_COUNT; ++i) panelPixel.setPixelColor(i, color);
     panelPixel.show();
   }
 }

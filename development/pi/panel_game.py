@@ -9,7 +9,7 @@ from pathlib import Path
 import time
 from game_engine import Game, Settings, MODES
 
-VERSION = "bench-0.15.1"
+VERSION = "bench-0.16.0"
 
 
 class Controls:
@@ -52,7 +52,7 @@ class Controls:
             self.result = None
         elif key == "A":
             if self.play_locked:return
-            self.game = Game(self.mode, self.settings)
+            self.game = Game(self.mode, self.settings, powered_startup=True)
             self.game.broken = list(self.levels[:2])
             self.game.start(now)
             if self.reporting: self.reporting.begin(self.game, now)
@@ -135,7 +135,7 @@ def main():
             replies.append((expected, time.monotonic() + 1, callback))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.15.1")
+            initial("HELLO", "HELLO 1 bench-0.16.0")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
@@ -154,7 +154,7 @@ def main():
             previous = None
             shown = None
             print("PHYSICAL PANEL: 1 USB | 2 USB break-all | 3 keys | 4 keys break-all", flush=True)
-            print("A starts; D stops. Unavailable beams are excluded at startup; at least one beam must be available.", flush=True)
+            print("A starts a powered preparation check; D stops. Beams still blocked after preparation are excluded; at least one must be available.", flush=True)
             print("Portal maintenance requires local C confirmation. C renews test enable; D cancels tests/sound; B exits maintenance locally.",flush=True)
             print("Latch requires a fresh OFF→ON during RUNNING. Keys objective: 1,3,2,4.", flush=True)
             print("Beam 1 input = calibrated TEMT6000 A0; Mega D9 = Nano module 1 / beam 1; built-in LED = beam 1; D5 = beam 2; RGB = combined status.", flush=True)

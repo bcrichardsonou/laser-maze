@@ -30,10 +30,11 @@ class Settings:
 class Game:
     KEY_ORDER = (1, 3, 2, 4)
 
-    def __init__(self, mode="usb", settings=None):
+    def __init__(self, mode="usb", settings=None, powered_startup=False):
         if mode not in MODES:
             raise ValueError("Unknown game mode")
         self.mode = mode
+        self.powered_startup = powered_startup
         self.settings = settings or Settings()
         self.state = "idle"
         self.outcome = None
@@ -55,7 +56,7 @@ class Game:
     def start(self, now):
         if self.state != "idle":
             raise ValueError("Create a new game to restart")
-        self.enabled = [configured and not broken for configured,broken in zip(self.settings.enabled_beams or [True]*self.settings.beam_count,self.broken)]
+        self.enabled = [configured and (self.powered_startup or not broken) for configured,broken in zip(self.settings.enabled_beams or [True]*self.settings.beam_count,self.broken)]
         if not any(self.enabled):
             self.finish("no_beams_available", fault=True)
             return
@@ -121,6 +122,8 @@ class Game:
                     return
 
     def outputs(self, now):
+        if self.state == "starting" and self.powered_startup:
+            return tuple(self.enabled)
         if self.state != "running":
             return (False,) * self.settings.beam_count
         return tuple(self.enabled[i] and not self.completed[i] and (self.reenable_at[i] is None or now >= self.reenable_at[i])

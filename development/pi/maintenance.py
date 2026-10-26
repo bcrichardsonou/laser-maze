@@ -12,7 +12,7 @@ from game_reporting import atomic_json
 
 ID = re.compile(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\Z')
 COLORS = ('RED','GREEN','BLUE','YELLOW','PURPLE','OFF')
-ACTIONS = ('enter_maintenance','leave_maintenance','stop_game','snapshot','audio_play','stop_audio','audio_mute','rgb_test','display_test','restart_game','receiver_capture','receiver_apply','receiver_thresholds','module_test','game_settings','start_lock','audio_volume','audio_output_test','service_start','service_stop','reboot_pi','software_reinstall')
+ACTIONS = ('enter_maintenance','leave_maintenance','stop_game','snapshot','audio_play','stop_audio','audio_mute','rgb_test','display_test','restart_game','receiver_capture','receiver_apply','receiver_thresholds','module_test','laser_align','game_settings','start_lock','audio_volume','audio_output_test','service_start','service_stop','reboot_pi','software_reinstall')
 
 
 def validate(command, identity, wall):
@@ -85,7 +85,7 @@ class Maintenance:
 
     def receive_light(self,value,now):
         self.raw=value;self.raw_at=now
-        if self.test and self.test['kind']=='capture' and len(self.test['values'])<100:self.test['values'].append(value)
+        if self.test and self.test['kind']=='capture' and self.test.get('sample_after') is not None and now>=self.test['sample_after'] and len(self.test['values'])<100:self.test['values'].append(value)
 
     def live(self,controls,now):
         settings=asdict(controls.settings);settings.pop('beam_count',None)
@@ -96,8 +96,9 @@ class Maintenance:
                 captures={key:summarize(v) for key,v in self.capture_values.items()},candidate=self.candidate),
             settings=settings,inputs=list(controls.levels),last_key=self.last_key,last_key_at=int(self.last_key_at),
             audio=dict(volume=self.volume,muted=self.audio.muted,backend=str(self.audio.backend or 'unavailable'),output_device=self.audio.environment.get('ZOCO_AUDIO_TARGET','configured default') if hasattr(self.audio,'environment') else 'configured default'),
-            capabilities=dict(module_count=1,module_pixels=16,ring_customization=False,laser_switching=False,rfid=False,hazer=False,door=False),
+            capabilities=dict(module_count=1,module_pixels=16,ring_customization=False,laser_switching=True,powered_calibration=True,rfid=False,hazer=False,door=False),
             firmware_version=getattr(self,'version','unconfirmed'),python_version=getattr(self,'version','unconfirmed'),serial_port=getattr(self,'serial_port','unconfirmed'),
+            laser_command_on=self.display()[0],laser_seconds_remaining=max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('alignment','module','capture') else 0,
             test=self.test['kind'] if self.test else 'none',capture_samples=len(self.test['values']) if self.test and self.test['kind']=='capture' else 0)
 
     def publish(self,controls,now):
@@ -157,7 +158,7 @@ class Maintenance:
 
     def display(self):
         if self.test and self.test['kind']=='rgb':return False,False,0,self.test['color']
-        if self.test and self.test['kind']=='module':return True,False,0,'BLUE'
+        if self.test and self.test['kind'] in ('module','alignment','capture'):return True,False,0,'YELLOW'
         if self.test and self.test['kind']=='display':return False,False,5999,'BLUE'
         return False,False,0,'BLUE' if self.enabled else 'YELLOW'
 
@@ -169,6 +170,8 @@ class Maintenance:
             test=self.test
             if test['command']['expires_at']<=wall or not self.local_enabled():self.cancel_test(controls,'local_enable_expired')
             elif test['kind']=='capture':
+                # Begin settling only after the output command has been acknowledged.
+                if test.get('sample_after') is None and serial_idle and previous and previous[0]:test['sample_after']=now+.5
                 if len(test['values'])>=100:
                     phase=test['phase'];self.capture_values[phase]=list(test['values'])
                     if set(self.capture_values)=={'blocked','clear','blocked_check'}:
@@ -242,7 +245,7 @@ class Maintenance:
                 if (phase=='clear' and 'blocked' not in self.capture_values) or (phase=='blocked_check' and not {'blocked','clear'}.issubset(self.capture_values)):
                     self.complete(command,'failed','capture_blocked_then_clear_then_blocked_check',controls)
                 elif now-self.raw_at>1:self.complete(command,'failed','receiver_data_not_ready',controls)
-                else:self.test=dict(kind='capture',command=command,phase=phase,values=[],until=now+12)
+                else:self.test=dict(kind='capture',command=command,phase=phase,values=[],sample_after=None,until=now+15)
             elif action=='receiver_apply':
                 candidate=self.candidate
                 if not candidate or candidate['id']!=params['candidate_id'] or wall-candidate['created_at']>1800 or not candidate['proposal']['usable']:
@@ -260,6 +263,7 @@ class Maintenance:
                     self.volume=params['percent'];self.audio.volume=self.effects.volume=self.volume/100;self.stop_audio();self.save()
                     self.complete(command,'completed','audio_playback_level_saved',controls)
             elif action=='module_test':self.test=dict(kind='module',command=command,until=now+5)
+            elif action=='laser_align':self.test=dict(kind='alignment',command=command,until=now+30)
             elif action=='audio_mute':
                 self.audio.muted=self.effects.muted=params['muted'];self.stop_audio();self.save()
                 self.complete(command,'completed','audio_muted' if params['muted'] else 'audio_unmuted',controls)
