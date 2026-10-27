@@ -10,7 +10,7 @@ import time
 from game_engine import Game, Settings, MODES
 from entry_authorization import Entry
 
-VERSION = "bench-0.17.0"
+VERSION = "bench-0.17.1"
 
 
 class Controls:
@@ -118,6 +118,8 @@ class Controls:
         if not self.game:
             # Completion/exit delay keeps the occupied indication; beam feedback belongs to modules.
             color = "BLUE" if self.result and now < self.result_red_at else "RED"
+            if self.rfid_entry and self.reader_ready and self.entry_idle(now) and self.entry.scanned and self.entry.deadline is not None and now < self.entry.deadline:
+                color = "PURPLE"
             return (False, False, 0, color)
         game = self.game
         outputs = game.outputs(now)
@@ -181,7 +183,7 @@ def main():
             replies.append((expected, time.monotonic() + 1, callback))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.17.0")
+            initial("HELLO", "HELLO 1 bench-0.17.1")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
