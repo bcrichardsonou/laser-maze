@@ -10,7 +10,15 @@ import time
 from game_engine import Game, Settings, MODES
 from entry_authorization import Entry
 
-VERSION = "bench-0.17.2"
+def reader_reply(line):
+    words=line.split()
+    if len(words)!=7 or words[0]!="RFID" or words[1] not in ("READY","MISSING") or any(not v.isdigit() for v in words[2:]):raise RuntimeError("Invalid RFID health reply")
+    values=list(map(int,words[2:]))
+    if any(v>4294967295 for v in values[:2]) or any(v>255 for v in values[2:]):raise RuntimeError("Invalid RFID diagnostics range")
+    return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register"),values))
+
+
+VERSION = "bench-0.17.3"
 
 
 class Controls:
@@ -184,7 +192,7 @@ def main():
             replies.append((expected, time.monotonic() + 1, callback))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.17.2")
+            initial("HELLO", "HELLO 1 bench-0.17.3")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
@@ -195,8 +203,7 @@ def main():
             controls.inputs([v == "1" for v in row[1:]], time.monotonic())
             port.write(b"RFID\n"); port.flush()
             reader = port.readline().decode("ascii", errors="replace").strip()
-            if reader not in ("RFID READY", "RFID MISSING"): raise RuntimeError("Invalid RFID health reply")
-            controls.reader_ready = reader == "RFID READY"
+            controls.reader_ready,controls.reader_diagnostics = reader_reply(reader)
             initial("ARM", "OK ARM")
             initial("CONTROL", "OK CONTROL")
             connected = True
@@ -232,20 +239,14 @@ def main():
                         if len(words) != 3 or words[1] not in ("0", "1", "2") or words[2] not in ("0", "1"): raise RuntimeError("Invalid input")
                         values = controls.levels.copy(); values[int(words[1])] = words[2] == "1"
                         controls.inputs(values, now)
-                    elif line.startswith("RFID DIAG "):
-                        if len(words)!=7 or any(not v.isdigit() for v in words[2:]) or not replies or replies[0][0]!="RFID DIAG":raise RuntimeError("Invalid RFID diagnostics")
-                        values=list(map(int,words[2:]))
-                        if any(v>4294967295 for v in values[:2]) or any(v>255 for v in values[2:]):raise RuntimeError("Invalid RFID diagnostics range")
-                        replies.popleft()
-                        controls.reader_diagnostics=dict(zip(('tag_responses','selection_failures','last_request_status','last_selection_status','receive_gain_register'),values))
                     elif line == "RFID TAG":
                         if maintenance.enabled or maintenance.pending:
                             controls.entry.reset('maintenance')
                             controls.last_scan_at=now;controls.scan_count+=1
                         else:controls.swipe(now)
-                    elif line in ("RFID READY", "RFID MISSING"):
+                    elif line.startswith(("RFID READY ", "RFID MISSING ")):
                         if not replies or replies[0][0]!="RFID STATUS":raise RuntimeError("Unexpected RFID health reply")
-                        replies.popleft();controls.reader_ready=line=="RFID READY"
+                        replies.popleft();controls.reader_ready,controls.reader_diagnostics=reader_reply(line)
                         if not controls.reader_ready:controls.entry.reset('reader_unavailable')
                     elif line == "KEY UP": pass
                     elif line == "KEY INVALID": print("Press one keypad key at a time.", flush=True)
@@ -276,7 +277,7 @@ def main():
                     send("LIGHT","LIGHT A0")
                     next_light=now+(.04 if maintenance.test and maintenance.test['kind']=='capture' else .2)
                 if now>=next_rfid:
-                    send("RFID","RFID STATUS");send("RFID DIAG","RFID DIAG");next_rfid=now+2
+                    send("RFID","RFID STATUS");next_rfid=now+2
                 maintenance.publish(controls,now)
                 g = controls.game
                 status = (controls.mode, g.state if g else "idle", desired[2], g.breaks if g else 0,

@@ -39,7 +39,10 @@ bool rfidCommand(const char *text) {
   if (strcmp(text, "RFID") != 0) return false;
   if (!rfidReady) rfidInitialize();
   rfidReady = rfidProbe();
-  Serial.println(rfidReady ? "RFID READY" : "RFID MISSING");
+  Serial.print(rfidReady ? "RFID READY " : "RFID MISSING ");
+  Serial.print(rfidResponses);Serial.print(' ');Serial.print(rfidSelectFailures);
+  Serial.print(' ');Serial.print(rfidRequestStatus);Serial.print(' ');
+  Serial.print(rfidSelectStatus);Serial.print(' ');Serial.println(entryReader.PCD_GetAntennaGain());
   return true;
 }
 
