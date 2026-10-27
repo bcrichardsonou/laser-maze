@@ -90,7 +90,8 @@ class Reporting:
         game = controls.game
         phase = "fault" if fault else "stopped" if stopped else game.state if game else "finished" if controls.result else "idle"
         metrics = dict(bench_prototype=True, fast_demo=self.fast, game_phase=phase, game_mode=controls.mode,
-            arduino_connected=connected, keypad_available=connected, python_version=self.version,
+            arduino_connected=connected, keypad_available=connected, rfid_reader_available=controls.reader_ready if connected else False,
+            entry_state=controls.entry.reason, rfid_scan_count=controls.scan_count, python_version=self.version,
             firmware_version=self.version if connected else "unconfirmed", configured_beams=2,
             remaining_seconds=desired[2], break_count=game.breaks if game else controls.result[1] if controls.result else 0,
             key_progress=game.key_progress if game else 0, objective_completed=game.objective if game else False,

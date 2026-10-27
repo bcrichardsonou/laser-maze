@@ -1,4 +1,4 @@
-"""Physical-panel two-beam game. No keyboard entry, RFID or field actuators."""
+"""Physical-panel two-beam game with RC522 + mission-code authorization."""
 import argparse
 from collections import deque
 import fcntl
@@ -8,12 +8,18 @@ import signal
 from pathlib import Path
 import time
 from game_engine import Game, Settings, MODES
+from entry_authorization import Entry
 
-VERSION = "bench-0.16.1"
+VERSION = "bench-0.17.0"
 
 
 class Controls:
-    def __init__(self, fast=False, reporting=None):
+    def __init__(self, fast=False, reporting=None, rfid_entry=False):
+        self.rfid_entry = rfid_entry
+        self.entry = Entry()
+        self.reader_ready = False
+        self.last_scan_at = None
+        self.scan_count = 0
         self.reporting = reporting
         self.fast = fast
         self.admission = 0 if fast else 5
@@ -42,27 +48,63 @@ class Controls:
             self.game.tick(now)
             if rising: self.game.objective_usb(now)
 
+    def entry_idle(self, now):
+        return not self.game and not self.play_locked and not (self.result and now < self.result_red_at)
+
+    def start(self, now):
+        if not self.entry_idle(now):
+            self.entry.reset('entry_locked')
+            return
+        self.game = Game(self.mode, self.settings, powered_startup=True, admission=self.admission)
+        self.game.broken = list(self.levels[:2])
+        self.game.start(now)
+        if self.reporting: self.reporting.begin(self.game, now)
+        self.result = None
+        self.entry.reset('game_in_progress')
+
+    def swipe(self, now):
+        self.tick(now)
+        self.last_scan_at = now
+        self.scan_count += 1
+        if not self.rfid_entry or not self.reader_ready or not self.entry_idle(now):
+            self.entry.reset('entry_locked')
+            return
+        mode = self.entry.swipe(now, self.allowed_modes)
+        if mode:
+            self.mode = mode
+            self.start(now)
+
     def key(self, key, now):
         self.tick(now)
-        if self.game and self.game.state in ("starting", "admitting", "running"):
-            if key == "D": self.game.finish("stopped")
-            elif key in "1234": self.game.key(int(key), now)
+        if key == 'D':
+            self.entry.reset('entry_cancelled')
+            if self.game: self.game.finish('stopped')
+            else: self.result = None
             return
-        if key in "1234":
-            selected=MODES[int(key) - 1]
-            if selected not in self.allowed_modes:return
-            self.mode = selected
-            self.result = None
-        elif key == "A":
-            if self.play_locked or (self.result and now < self.result_red_at):return
-            self.game = Game(self.mode, self.settings, powered_startup=True, admission=self.admission)
-            self.game.broken = list(self.levels[:2])
-            self.game.start(now)
-            if self.reporting: self.reporting.begin(self.game, now)
-            self.result = None
-        elif key == "D": self.result = None
+        if self.game:
+            if key in '1234': self.game.key(int(key), now)
+            return
+        if self.rfid_entry:
+            if not self.entry_idle(now) or not self.reader_ready:
+                self.entry.reset('reader_unavailable' if not self.reader_ready else 'entry_locked')
+                return
+            mode = self.entry.key(key, now, self.allowed_modes)
+            if mode:
+                self.mode = mode
+                self.start(now)
+            return
+        # Explicit standalone bench/test Controls retain manual mode selection.
+        if key in '1234':
+            selected = MODES[int(key)-1]
+            if selected in self.allowed_modes:
+                self.mode = selected
+                self.result = None
+        elif key == 'A':
+            self.start(now)
 
     def tick(self, now):
+        self.entry.tick(now)
+        if self.play_locked: self.entry.reset("entry_locked")
         if self.game:
             self.game.tick(now)
             if self.game.state in ("finished", "fault"):
@@ -105,7 +147,7 @@ def main():
         parser.exit(1, "Stop other controller tests first.\n")
     from game_reporting import Reporting
     reporting = Reporting(Path.home() / "zoco-monitor/laser-maze", VERSION, args.fast)
-    controls = Controls(args.fast, reporting)
+    controls = Controls(args.fast, reporting, rfid_entry=True)
     from game_audio import Audio, GameSounds
     audio = Audio()
     effects = Audio()
@@ -139,7 +181,7 @@ def main():
             replies.append((expected, time.monotonic() + 1, callback))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.16.1")
+            initial("HELLO", "HELLO 1 bench-0.17.0")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
@@ -148,17 +190,21 @@ def main():
             if len(row) != 4 or row[0] != "INPUTS" or any(v not in ("0", "1") for v in row[1:]):
                 raise RuntimeError("Invalid initial inputs")
             controls.inputs([v == "1" for v in row[1:]], time.monotonic())
+            port.write(b"RFID\n"); port.flush()
+            reader = port.readline().decode("ascii", errors="replace").strip()
+            if reader not in ("RFID READY", "RFID MISSING"): raise RuntimeError("Invalid RFID health reply")
+            controls.reader_ready = reader == "RFID READY"
             initial("ARM", "OK ARM")
             initial("CONTROL", "OK CONTROL")
             connected = True
             maintenance.connected=True;maintenance.version=VERSION;maintenance.serial_port=args.port;maintenance.send=send
             port.timeout = 0.03
             pending = bytearray()
-            next_hb = next_poll = next_light = 0
+            next_hb = next_poll = next_light = next_rfid = 0
             previous = None
             shown = None
-            print("PHYSICAL PANEL: 1 USB | 2 USB break-all | 3 keys | 4 keys break-all", flush=True)
-            print("A starts a powered preparation check, then five-second admission before the countdown; D stops. Beams still blocked after preparation are excluded; at least one must be available.", flush=True)
+            print("RFID + code: 77004# keys | 40077# keys accessible | 16646# Black Hat/Vexed | 64661# accessible. Five-second entry windows; * clears; D stops. A no longer starts games.", flush=True)
+            print("Valid RFID + code starts preparation, then five-second admission before countdown. Reader: " + ("ready" if controls.reader_ready else "missing — wire RC522 before starting"), flush=True)
             print("Portal maintenance requires local C confirmation. C renews test enable; D cancels tests/sound; B exits maintenance locally.",flush=True)
             print("Latch requires a fresh OFF→ON during RUNNING. Keys objective: 1,3,2,4.", flush=True)
             print("Beam 1 input = calibrated TEMT6000 A0; Mega D9 = Nano module 1 / beam 1; built-in LED = beam 1; D5 = beam 2; RGB = combined status.", flush=True)
@@ -183,10 +229,20 @@ def main():
                         if len(words) != 3 or words[1] not in ("0", "1", "2") or words[2] not in ("0", "1"): raise RuntimeError("Invalid input")
                         values = controls.levels.copy(); values[int(words[1])] = words[2] == "1"
                         controls.inputs(values, now)
+                    elif line == "RFID TAG":
+                        if maintenance.enabled or maintenance.pending:
+                            controls.entry.reset('maintenance')
+                            controls.last_scan_at=now;controls.scan_count+=1
+                        else:controls.swipe(now)
+                    elif line in ("RFID READY", "RFID MISSING"):
+                        if not replies or replies[0][0]!="RFID STATUS":raise RuntimeError("Unexpected RFID health reply")
+                        replies.popleft();controls.reader_ready=line=="RFID READY"
+                        if not controls.reader_ready:controls.entry.reset('reader_unavailable')
                     elif line == "KEY UP": pass
                     elif line == "KEY INVALID": print("Press one keypad key at a time.", flush=True)
                     elif len(words) == 2 and words[0] == "KEY" and len(words[1]) == 1 and words[1] in "0123456789ABCD*#":
                         maintenance.last_key=words[1];maintenance.last_key_at=maintenance.wall()
+                        if maintenance.enabled or maintenance.pending:controls.entry.reset("maintenance")
                         if not maintenance.local_key(words[1],controls):controls.key(words[1],now)
                     elif replies and line == replies[0][0]:
                         reply=replies.popleft()
@@ -196,6 +252,7 @@ def main():
                 controls.tick(now)
                 sounds.update(controls, now)
                 maintenance.tick(controls,now,serial_idle=not replies,previous=previous)
+                if maintenance.enabled or maintenance.pending:controls.entry.reset("maintenance")
                 desired = maintenance.display() if maintenance.enabled or maintenance.pending else controls.display(now)
                 if previous is None or desired[0] != previous[0]: send("ON" if desired[0] else "PAUSE", "OK ON" if desired[0] else "OK PAUSE")
                 if previous is None or desired[1] != previous[1]: send("LED ON" if desired[1] else "LED OFF", "OK LED ON" if desired[1] else "OK LED OFF")
@@ -209,14 +266,16 @@ def main():
                 if now>=next_light:
                     send("LIGHT","LIGHT A0")
                     next_light=now+(.04 if maintenance.test and maintenance.test['kind']=='capture' else .2)
+                if now>=next_rfid:
+                    send("RFID","RFID STATUS");next_rfid=now+2
                 maintenance.publish(controls,now)
                 g = controls.game
                 status = (controls.mode, g.state if g else "idle", desired[2], g.breaks if g else 0,
-                    g.key_progress if g else 0, g.objective if g else False, controls.result, tuple(g.enabled if g else (controls.last_enabled or [])))
+                    g.key_progress if g else 0, g.objective if g else False, controls.result, tuple(g.enabled if g else (controls.last_enabled or [])), controls.reader_ready, controls.entry.reason, len(controls.entry.code), controls.scan_count)
                 if status != shown:
                     if controls.result: print(f"RESULT: {controls.result[0]} | breaks {controls.result[1]} | A to play again", flush=True)
                     elif g: print(f"{g.state.upper()} | {desired[2]}s | breaks {g.breaks}/{g.settings.max_breaks} | keys {g.key_progress}/4 | objective {g.objective} | excluded beams {','.join(str(i+1) for i,v in enumerate(g.enabled) if not v) or 'none'}", flush=True)
-                    else: print(f"IDLE — selected {controls.mode}; A to start", flush=True)
+                    else: print(f"IDLE — RFID {'ready' if controls.reader_ready else 'missing'} | {controls.entry.reason} | code {len(controls.entry.code)}/6 characters | scans {controls.scan_count}", flush=True)
                     shown = status
         except KeyboardInterrupt: print("\nPanel game stopped.", flush=True)
         except (OSError, RuntimeError, serial.SerialException) as error:

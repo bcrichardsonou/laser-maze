@@ -94,9 +94,10 @@ class Maintenance:
             **self.metrics(),local_until=int(self.local_until),play_locked=self.play_locked,
             receiver=dict(pin='A0',raw=self.raw if now-self.raw_at<1 else None,blocked=controls.levels[0],thresholds=self.thresholds,
                 captures={key:summarize(v) for key,v in self.capture_values.items()},candidate=self.candidate),
+            rfid=dict(ready=controls.reader_ready,scans_this_run=controls.scan_count,seconds_since_scan=round(now-controls.last_scan_at,1) if controls.last_scan_at is not None else None,entry=controls.entry.status(now)),
             settings=settings,inputs=list(controls.levels),last_key=self.last_key,last_key_at=int(self.last_key_at),
             audio=dict(volume=self.volume,muted=self.audio.muted,backend=str(self.audio.backend or 'unavailable'),output_device=self.audio.environment.get('ZOCO_AUDIO_TARGET','configured default') if hasattr(self.audio,'environment') else 'configured default'),
-            capabilities=dict(module_count=1,module_pixels=16,ring_customization=False,laser_switching=True,powered_calibration=True,rfid=False,hazer=False,door=False),
+            capabilities=dict(module_count=1,module_pixels=16,ring_customization=False,laser_switching=True,powered_calibration=True,rfid=True,hazer=False,door=False),
             firmware_version=getattr(self,'version','unconfirmed'),python_version=getattr(self,'version','unconfirmed'),serial_port=getattr(self,'serial_port','unconfirmed'),
             laser_command_on=self.display()[0],laser_seconds_remaining=max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('alignment','module','capture') else 0,
             test=self.test['kind'] if self.test else 'none',capture_samples=len(self.test['values']) if self.test and self.test['kind']=='capture' else 0)
@@ -124,7 +125,7 @@ class Maintenance:
         self.next_live=0
         path=self.folder/'results'/(command['id']+'.json')
         if not path.exists():atomic_json(path,dict(id=command['id'],device_id=self.identity,status=status,reason=reason,
-            executed_at=int(self.wall()),snapshot=dict(self.metrics(),inputs=list(controls.levels),game_running=controls.game is not None,receiver=dict(raw=self.raw,thresholds=self.thresholds,captures={k:summarize(v) for k,v in self.capture_values.items()},candidate=self.candidate),play_locked=self.play_locked,volume=self.volume)))
+            executed_at=int(self.wall()),snapshot=dict(self.metrics(),inputs=list(controls.levels),game_running=controls.game is not None,rfid=dict(ready=controls.reader_ready,scans_this_run=controls.scan_count,entry_state=controls.entry.reason),receiver=dict(raw=self.raw,thresholds=self.thresholds,captures={k:summarize(v) for k,v in self.capture_values.items()},candidate=self.candidate),play_locked=self.play_locked,volume=self.volume)))
         atomic_json(self.folder/'outbox'/path.name,json.loads(path.read_text()))
         (self.folder/'inbox'/(command['id']+'.json')).unlink(missing_ok=True)
 

@@ -30,7 +30,7 @@ def main():
         time.sleep(2)
         port.reset_input_buffer()
         try:
-            exchange(port, "HELLO", "HELLO 1 bench-0.16.1")
+            exchange(port, "HELLO", "HELLO 1 bench-0.17.0")
             print("Firmware verified. Turning LED on for five seconds.", flush=True)
             exchange(port, "ARM", "OK ARM")
             exchange(port, "ON", "OK ON")

@@ -1,8 +1,9 @@
 // Two-beam bench controller; D9 commands Nano module 1 (5V logic only).
 #include "InputPanel.h"
+#include "RfidReader.h"
 const unsigned long WATCHDOG_MS = 1000;
 const uint8_t MODULE1_PIN = 9; // Mega D9 -> Nano D2, with Nano-side 10k pulldown.
-const char VERSION[] = "bench-0.16.1";
+const char VERSION[] = "bench-0.17.0";
 bool stableBroken = false;
 char command[32];
 unsigned int used = 0;
@@ -30,6 +31,8 @@ void handleCommand() {
     disableOutput();
     Serial.print("HELLO 1 ");
     Serial.println(VERSION);
+  } else if (rfidCommand(command)) {
+    // Reader health query; never energizes outputs.
   } else if (panelCommand(command, armed)) {
     // Panel commands never energize the simulated laser output.
   } else if (strcmp(command, "ARM") == 0) {
@@ -89,6 +92,7 @@ void setup() {
   digitalWrite(LED_BUILTIN, LOW);
   pinMode(LED_BUILTIN, OUTPUT);
   panelBegin();
+  rfidBegin();
   stableBroken = panelStable[0];
   disableOutput();
   Serial.begin(115200);
@@ -96,6 +100,7 @@ void setup() {
 
 void loop() {
   updatePanel(armed);
+  updateRfid(armed && panelDiagnostic);
   stableBroken = panelStable[0];
   if (armed && (unsigned long)(millis() - lastHeartbeat) >= WATCHDOG_MS) {
     disableOutput();
