@@ -12,7 +12,7 @@ from game_reporting import atomic_json
 
 ID = re.compile(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\Z')
 COLORS = ('RED','GREEN','BLUE','YELLOW','PURPLE','OFF')
-ACTIONS = ('enter_maintenance','leave_maintenance','stop_game','snapshot','audio_play','stop_audio','audio_mute','rgb_test','display_test','restart_game','receiver_capture','receiver_apply','receiver_thresholds','module_test','laser_align','game_settings','start_lock','audio_volume','audio_output_test','service_start','service_stop','reboot_pi','software_reinstall')
+ACTIONS = ('enter_maintenance','leave_maintenance','stop_game','snapshot','audio_play','stop_audio','audio_mute','rgb_test','display_test','restart_game','receiver_auto','receiver_capture','receiver_apply','receiver_thresholds','module_test','laser_align','game_settings','start_lock','audio_volume','audio_output_test','service_start','service_stop','reboot_pi','software_reinstall')
 
 
 def validate(command, identity, wall):
@@ -85,7 +85,7 @@ class Maintenance:
 
     def receive_light(self,value,now):
         self.raw=value;self.raw_at=now
-        if self.test and self.test['kind']=='capture' and self.test.get('sample_after') is not None and now>=self.test['sample_after'] and len(self.test['values'])<100:self.test['values'].append(value)
+        if self.test and self.test['kind'] in ('capture','auto') and self.test.get('sample_after') is not None and now>=self.test['sample_after'] and len(self.test['values'])<100:self.test['values'].append(value)
 
     def live(self,controls,now):
         settings=asdict(controls.settings);settings.pop('beam_count',None)
@@ -97,10 +97,11 @@ class Maintenance:
             rfid=dict(diagnostics=controls.reader_diagnostics,ready=controls.reader_ready,scans_this_run=controls.scan_count,seconds_since_scan=round(now-controls.last_scan_at,1) if controls.last_scan_at is not None else None,entry=controls.entry.status(now)),
             settings=settings,inputs=list(controls.levels),last_key=self.last_key,last_key_at=int(self.last_key_at),
             audio=dict(volume=self.volume,muted=self.audio.muted,backend=str(self.audio.backend or 'unavailable'),output_device=self.audio.environment.get('ZOCO_AUDIO_TARGET','configured default') if hasattr(self.audio,'environment') else 'configured default'),
-            capabilities=dict(module_count=1,module_pixels=16,ring_customization=False,laser_switching=True,powered_calibration=True,rfid=True,hazer=False,door=False),
+            capabilities=dict(module_count=1,module_pixels=16,ring_customization=False,laser_switching=True,powered_calibration=True,automatic_calibration=True,rfid=True,hazer=False,door=False),
             firmware_version=getattr(self,'version','unconfirmed'),python_version=getattr(self,'version','unconfirmed'),serial_port=getattr(self,'serial_port','unconfirmed'),
-            laser_command_on=self.display()[0],laser_seconds_remaining=max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('alignment','module','capture') else 0,
-            test=self.test['kind'] if self.test else 'none',capture_samples=len(self.test['values']) if self.test and self.test['kind']=='capture' else 0)
+            laser_command_on=self.display()[0],laser_seconds_remaining=max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('alignment','module','capture','auto') else 0,
+            test=self.test['kind'] if self.test else 'none',capture_samples=len(self.test['values']) if self.test and self.test['kind'] in ('capture','auto') else 0,
+            calibration_step=self.test['phase'] if self.test and self.test['kind']=='auto' else ('saving' if self.test and self.test['kind']=='apply' else 'none'))
 
     def publish(self,controls,now):
         if now>=self.next_live:
@@ -117,9 +118,39 @@ class Maintenance:
             record=dict(thresholds=thresholds,applied_at=int(self.wall()),command_id=command['id'],candidate=self.candidate)
             atomic_json(self.folder/'receiver-settings.json',record)
             self.thresholds=dict(thresholds);self.test=None
+            if command['action']=='receiver_auto' and self.candidate:self.candidate['applied']=True
             self.complete(command,'completed','receiver_thresholds_applied',controls)
         text='CAL {break_below} {clear_above}'.format(**thresholds)
         self.send(text,'OK '+text,acknowledged)
+
+    def automatic_tick(self,controls,now,serial_idle,previous):
+        test=self.test
+        if now>test['until']:
+            self.cancel_test(controls,'automatic_calibration_timed_out_check_connection');return
+        if test.get('sample_after') is None and serial_idle and previous==self.display():
+            # Allow both Nano ring bounces to finish before background/beam measurements.
+            test['sample_after']=now+(3.0 if test['phase']=='clear' else 2.5)
+        if len(test['values'])<100:return
+        phase=test['phase'];self.capture_values[phase]=list(test['values'])
+        phases=('blocked','clear','blocked_check');index=phases.index(phase)
+        if index<2:
+            test.update(phase=phases[index+1],values=[],sample_after=None);self.next_live=0;return
+        proposal=propose(self.capture_values['blocked'],self.capture_values['clear'],self.capture_values['blocked_check'])
+        if proposal['usable']:
+            off,on,again=(proposal[k] for k in phases)
+            gap=on['p05']-max(off['p95'],again['p95'])
+            if abs(off['median']-again['median'])>max(5,gap*.15):
+                proposal.update(usable=False,reason='Background light changed during calibration; keep the beam path clear and retry.')
+            elif any(v['p95']-v['p05']>max(10,gap*.30) for v in (off,on,again)):
+                proposal.update(usable=False,reason='Light readings were unstable; check aim, wiring and ambient light, then retry.')
+        self.candidate=dict(id=str(uuid.uuid4()),created_at=int(self.wall()),mode='automatic_off_on_off',proposal=proposal)
+        atomic_json(self.folder.parent/'calibration'/('auto-'+test['command']['id']+'.json'),
+                    dict(mode='automatic_off_on_off',module=1,pin='A0',readings=self.capture_values,candidate=self.candidate,applied_to_game=False))
+        if not proposal['usable']:
+            reason='automatic_calibration_failed_keep_path_clear_check_aim_and_wiring'
+            self.test=None;self.complete(test['command'],'failed',reason,controls);return
+        command=test['command'];self.test=None
+        self.apply_thresholds(command,dict(break_below=proposal['proposed_break_threshold'],clear_above=proposal['proposed_clear_threshold']),controls,now)
 
     def complete(self,command,status,reason,controls):
         self.next_live=0
@@ -158,6 +189,7 @@ class Maintenance:
         return self.enabled or self.pending is not None
 
     def display(self):
+        if self.test and self.test['kind']=='auto':return self.test['phase']=='clear',False,0,'YELLOW'
         if self.test and self.test['kind']=='rgb':return False,False,0,self.test['color']
         if self.test and self.test['kind'] in ('module','alignment','capture'):return True,False,0,'YELLOW'
         if self.test and self.test['kind']=='display':return False,False,5999,'BLUE'
@@ -170,6 +202,7 @@ class Maintenance:
         if self.test:
             test=self.test
             if test['command']['expires_at']<=wall or not self.local_enabled():self.cancel_test(controls,'local_enable_expired')
+            elif test['kind']=='auto':self.automatic_tick(controls,now,serial_idle,previous)
             elif test['kind']=='capture':
                 # Begin settling only after the output command has been acknowledged.
                 if test.get('sample_after') is None and serial_idle and previous and previous[0]:test['sample_after']=now+.5
@@ -240,6 +273,10 @@ class Maintenance:
                 self.complete(command,'completed','new_games_disabled' if self.play_locked else 'new_games_enabled',controls)
             elif not self.local_enabled():self.complete(command,'failed','press_C_in_maintenance_first',controls)
             elif self.test:self.complete(command,'failed','test_busy',controls)
+            elif action=='receiver_auto':
+                self.capture_values={};self.candidate=None
+                self.test=dict(kind='auto',command=command,phase='blocked',values=[],sample_after=None,until=now+40)
+                self.next_live=0
             elif action=='receiver_capture':
                 phase=params['phase']
                 if phase=='blocked':self.capture_values={};self.candidate=None

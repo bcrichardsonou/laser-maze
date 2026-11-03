@@ -10,8 +10,8 @@ struct ModuleState {
   uint32_t highSince = 0;
   uint32_t phaseSince = 0;
   static const uint32_t HIGH_FILTER_MS = 5;
-  static const uint32_t STARTUP_MS = 1000;
-  static const uint32_t SHUTDOWN_MS = 500;
+  static const uint32_t STARTUP_MS = 2250;
+  static const uint32_t SHUTDOWN_MS = 1880;
   void update(bool high, uint32_t now) {
     if (!high) {
       trackingHigh = false;
