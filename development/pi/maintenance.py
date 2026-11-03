@@ -12,7 +12,7 @@ from game_reporting import atomic_json
 
 ID = re.compile(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\Z')
 COLORS = ('RED','GREEN','BLUE','YELLOW','PURPLE','OFF')
-ACTIONS = ('enter_maintenance','leave_maintenance','stop_game','snapshot','audio_play','stop_audio','audio_mute','rgb_test','display_test','restart_game','receiver_auto','receiver_capture','receiver_apply','receiver_thresholds','module_test','laser_align','game_settings','start_lock','audio_volume','audio_output_test','service_start','service_stop','reboot_pi','software_reinstall')
+ACTIONS = ('enter_maintenance','leave_maintenance','stop_game','snapshot','audio_play','stop_audio','audio_mute','rgb_test','display_test','restart_game','beams_check','receiver_auto','receiver_capture','receiver_apply','receiver_thresholds','module_test','laser_align','game_settings','start_lock','audio_volume','audio_output_test','service_start','service_stop','reboot_pi','software_reinstall')
 
 
 def validate(command, identity, wall):
@@ -51,6 +51,7 @@ class Maintenance:
         self.enabled=False;self.local_until=0;self.pending=None;self.test=None;self.next_scan=0
         self.send=None;self.raw=None;self.raw_at=-100;self.last_key='none';self.last_key_at=0;self.connected=False
         self.thresholds=dict(break_below=20,clear_above=41);self.capture_values={};self.candidate=None;self.next_live=0
+        self.beam_check=None
         self.volume=100;self.play_locked=False;self.saved_settings=None
         receiver_file=self.folder/'receiver-settings.json'
         if receiver_file.exists():self.thresholds=validate_thresholds(json.loads(receiver_file.read_text())['thresholds'])
@@ -85,7 +86,7 @@ class Maintenance:
 
     def receive_light(self,value,now):
         self.raw=value;self.raw_at=now
-        if self.test and self.test['kind'] in ('capture','auto') and self.test.get('sample_after') is not None and now>=self.test['sample_after'] and len(self.test['values'])<100:self.test['values'].append(value)
+        if self.test and self.test['kind'] in ('capture','auto','beams') and self.test.get('sample_after') is not None and now>=self.test['sample_after'] and len(self.test['values'])<100:self.test['values'].append(value)
 
     def live(self,controls,now):
         settings=asdict(controls.settings);settings.pop('beam_count',None)
@@ -97,10 +98,11 @@ class Maintenance:
             rfid=dict(diagnostics=controls.reader_diagnostics,ready=controls.reader_ready,scans_this_run=controls.scan_count,seconds_since_scan=round(now-controls.last_scan_at,1) if controls.last_scan_at is not None else None,entry=controls.entry.status(now)),
             settings=settings,inputs=list(controls.levels),last_key=self.last_key,last_key_at=int(self.last_key_at),
             audio=dict(volume=self.volume,muted=self.audio.muted,backend=str(self.audio.backend or 'unavailable'),output_device=self.audio.environment.get('ZOCO_AUDIO_TARGET','configured default') if hasattr(self.audio,'environment') else 'configured default'),
-            capabilities=dict(module_count=1,module_pixels=16,ring_customization=False,laser_switching=True,powered_calibration=True,automatic_calibration=True,rfid=True,hazer=False,door=False),
+            capabilities=dict(module_count=1,module_pixels=16,ring_customization=False,laser_switching=True,powered_calibration=True,automatic_calibration=True,all_beams_check=True,rfid=True,hazer=False,door=False),
             firmware_version=getattr(self,'version','unconfirmed'),python_version=getattr(self,'version','unconfirmed'),serial_port=getattr(self,'serial_port','unconfirmed'),
-            laser_command_on=self.display()[0],laser_seconds_remaining=max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('alignment','module','capture','auto') else 0,
-            test=self.test['kind'] if self.test else 'none',capture_samples=len(self.test['values']) if self.test and self.test['kind'] in ('capture','auto') else 0,
+            laser_command_on=self.display()[0],laser_seconds_remaining=max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('alignment','module','capture','auto','beams') else 0,
+            test=self.test['kind'] if self.test else 'none',capture_samples=len(self.test['values']) if self.test and self.test['kind'] in ('capture','auto','beams') else 0,
+            beam_check=self.beam_check,beam_check_step=self.test['phase'] if self.test and self.test['kind']=='beams' else 'none',
             calibration_step=self.test['phase'] if self.test and self.test['kind']=='auto' else ('saving' if self.test and self.test['kind']=='apply' else 'none'))
 
     def publish(self,controls,now):
@@ -152,18 +154,42 @@ class Maintenance:
         command=test['command'];self.test=None
         self.apply_thresholds(command,dict(break_below=proposal['proposed_break_threshold'],clear_above=proposal['proposed_clear_threshold']),controls,now)
 
+    def beams_tick(self,controls,now,serial_idle,previous):
+        test=self.test
+        if now>test['until']:
+            self.cancel_test(controls,'beam_test_timed_out_check_connection');return
+        if test['phase']=='off':
+            # Report completion only after the module LOW command is acknowledged.
+            if serial_idle and previous==self.display():
+                self.beam_check.update(status='completed',finished_at=int(self.wall()),outputs_off_confirmed=True)
+                atomic_json(self.folder/'beam-check.json',self.beam_check)
+                command=test['command'];self.test=None
+                self.complete(command,'completed','all_beams_clear' if self.beam_check['all_clear'] else 'beam_test_attention_required',controls)
+            return
+        if test.get('sample_after') is None and serial_idle and previous==self.display():
+            test['sample_after']=now+3.0
+        if len(test['values'])<100:return
+        sample=summarize(test['values']);clear=self.thresholds['clear_above']
+        state='clear' if sample['minimum']>=clear else ('not_detected' if sample['maximum']<clear else 'unstable')
+        self.beam_check.update(all_clear=state=='clear',modules=[dict(module=1,pin='A0',state=state,clear_above=clear,**sample)])
+        test['phase']='off';self.next_live=0
+
     def complete(self,command,status,reason,controls):
         self.next_live=0
         path=self.folder/'results'/(command['id']+'.json')
         if not path.exists():atomic_json(path,dict(id=command['id'],device_id=self.identity,status=status,reason=reason,
-            executed_at=int(self.wall()),snapshot=dict(self.metrics(),inputs=list(controls.levels),game_running=controls.game is not None,rfid=dict(diagnostics=controls.reader_diagnostics,ready=controls.reader_ready,scans_this_run=controls.scan_count,entry_state=controls.entry.reason),receiver=dict(raw=self.raw,thresholds=self.thresholds,captures={k:summarize(v) for k,v in self.capture_values.items()},candidate=self.candidate),play_locked=self.play_locked,volume=self.volume)))
+            executed_at=int(self.wall()),snapshot=dict(self.metrics(),inputs=list(controls.levels),game_running=controls.game is not None,rfid=dict(diagnostics=controls.reader_diagnostics,ready=controls.reader_ready,scans_this_run=controls.scan_count,entry_state=controls.entry.reason),receiver=dict(raw=self.raw,thresholds=self.thresholds,captures={k:summarize(v) for k,v in self.capture_values.items()},candidate=self.candidate),play_locked=self.play_locked,volume=self.volume,beam_check=self.beam_check)))
         atomic_json(self.folder/'outbox'/path.name,json.loads(path.read_text()))
         (self.folder/'inbox'/(command['id']+'.json')).unlink(missing_ok=True)
 
     def stop_audio(self):self.audio.cancel();self.effects.cancel()
 
     def cancel_test(self,controls,reason='cancelled'):
-        if self.test:self.complete(self.test['command'],'failed',reason,controls);self.test=None
+        if self.test:
+            if self.test['kind']=='beams':
+                self.beam_check.update(status='cancelled' if reason=='cancelled' else 'unconfirmed',reason=reason,all_clear=False,finished_at=int(self.wall()),outputs_off_confirmed=False)
+                atomic_json(self.folder/'beam-check.json',self.beam_check)
+            self.complete(self.test['command'],'failed',reason,controls);self.test=None
         self.stop_audio()
 
     def local_key(self,key,controls):
@@ -189,6 +215,7 @@ class Maintenance:
         return self.enabled or self.pending is not None
 
     def display(self):
+        if self.test and self.test['kind']=='beams':return self.test['phase']=='on',False,0,'YELLOW'
         if self.test and self.test['kind']=='auto':return self.test['phase']=='clear',False,0,'YELLOW'
         if self.test and self.test['kind']=='rgb':return False,False,0,self.test['color']
         if self.test and self.test['kind'] in ('module','alignment','capture'):return True,False,0,'YELLOW'
@@ -202,6 +229,7 @@ class Maintenance:
         if self.test:
             test=self.test
             if test['command']['expires_at']<=wall or not self.local_enabled():self.cancel_test(controls,'local_enable_expired')
+            elif test['kind']=='beams':self.beams_tick(controls,now,serial_idle,previous)
             elif test['kind']=='auto':self.automatic_tick(controls,now,serial_idle,previous)
             elif test['kind']=='capture':
                 # Begin settling only after the output command has been acknowledged.
@@ -273,6 +301,16 @@ class Maintenance:
                 self.complete(command,'completed','new_games_disabled' if self.play_locked else 'new_games_enabled',controls)
             elif not self.local_enabled():self.complete(command,'failed','press_C_in_maintenance_first',controls)
             elif self.test:self.complete(command,'failed','test_busy',controls)
+            elif action=='beams_check':
+                enabled=list(controls.settings.enabled_beams or (True,True))[0]
+                self.beam_check=dict(command_id=command['id'],started_at=int(wall),status='running',all_clear=False,configured_count=1,tested_count=1 if enabled else 0,outputs_off_confirmed=False,modules=[])
+                atomic_json(self.folder/'beam-check.json',self.beam_check)
+                if not enabled:
+                    self.beam_check.update(status='completed',reason='no_enabled_laser_receivers',modules=[dict(module=1,pin='A0',state='disabled')])
+                    atomic_json(self.folder/'beam-check.json',self.beam_check)
+                    self.complete(command,'completed','no_enabled_laser_receivers',controls)
+                else:self.test=dict(kind='beams',command=command,phase='on',values=[],sample_after=None,until=now+20)
+                self.next_live=0
             elif action=='receiver_auto':
                 self.capture_values={};self.candidate=None
                 self.test=dict(kind='auto',command=command,phase='blocked',values=[],sample_after=None,until=now+40)

@@ -18,7 +18,7 @@ def reader_reply(line):
     return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register"),values))
 
 
-VERSION = "bench-0.18.0"
+VERSION = "bench-0.18.1"
 
 
 class Controls:
@@ -192,7 +192,7 @@ def main():
             replies.append((expected, time.monotonic() + 1, callback))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.18.0")
+            initial("HELLO", "HELLO 1 bench-0.18.1")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
@@ -275,7 +275,7 @@ def main():
                     send("INPUTS", "INPUTS"); send("KEYPAD", "KEYPAD READY"); next_poll = now + 0.5
                 if now>=next_light:
                     send("LIGHT","LIGHT A0")
-                    next_light=now+(.04 if maintenance.test and maintenance.test['kind'] in ('capture','auto') else .2)
+                    next_light=now+(.04 if maintenance.test and maintenance.test['kind'] in ('capture','auto','beams') else .2)
                 if now>=next_rfid:
                     send("RFID","RFID STATUS");next_rfid=now+2
                 maintenance.publish(controls,now)
