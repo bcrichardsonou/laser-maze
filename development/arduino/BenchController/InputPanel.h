@@ -52,7 +52,7 @@ void panelBegin() {
   panelTimer.setBrightness(2);
   panelTimer.clear();
   panelPixel.begin();
-  panelPixel.setBrightness(32);
+  panelPixel.setBrightness(255);
   panelPixel.clear();
   panelPixel.show();
   for (uint8_t i = 0; i < 3; i++) {

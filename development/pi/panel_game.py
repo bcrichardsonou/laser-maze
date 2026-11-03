@@ -18,7 +18,7 @@ def reader_reply(line):
     return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register"),values))
 
 
-VERSION = "bench-0.19.1"
+VERSION = "bench-0.19.2"
 
 
 class Controls:
@@ -225,7 +225,7 @@ def main():
             replies.append((expected, time.monotonic() + 1, callback))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.19.1")
+            initial("HELLO", "HELLO 1 bench-0.19.2")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
