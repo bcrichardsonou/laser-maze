@@ -14,7 +14,9 @@ bool keypadReady = false;
 unsigned long keypadPollAt = 0;
 char rawKey = 'N', stableKey = 'N';
 unsigned long keyChangedAt = 0;
-const char SOFT_KEYMAP[] = "DCBA#9630852*741";
+// Storm PLX12T201: connector 1/2/8/7 -> P0/P1/P2/P3 (rows),
+// connector 3/4/5 -> P4/P5/P6 (columns); connector 6 and P7 unused.
+const char STORM_KEYMAP[] = "123F456F789F*0#F";
 const uint8_t STATUS_PIXEL_COUNT = 8;
 Adafruit_NeoPixel panelPixel(STATUS_PIXEL_COUNT, 6, NEO_GRB + NEO_KHZ800);
 TM1637Display panelTimer(7, 8);
@@ -82,7 +84,7 @@ int lowLine(uint8_t nibble) {
   }
 }
 
-// PCF8574 two-read scanner/keymap from Lonely Binary's TK85 reference.
+// PCF8574 two-read scanner; P0-P3 rows, P4-P7 columns.
 char readPanelKey() {
   uint8_t upper, lower;
   if (!keypadRead(0xF0, upper) || !keypadRead(0x0F, lower)) {
@@ -95,7 +97,7 @@ char readPanelKey() {
   if (upper == 0x0F || lower == 0x0F) return 'N';
   int column = lowLine(upper), row = lowLine(lower);
   if (column < 0 || row < 0) return 'F';
-  return SOFT_KEYMAP[column + 4 * row];
+  return STORM_KEYMAP[column + 4 * row];
 }
 
 void panelInputSnapshot() {

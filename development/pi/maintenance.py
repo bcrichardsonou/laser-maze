@@ -98,9 +98,9 @@ class Maintenance:
             rfid=dict(diagnostics=controls.reader_diagnostics,ready=controls.reader_ready,scans_this_run=controls.scan_count,seconds_since_scan=round(now-controls.last_scan_at,1) if controls.last_scan_at is not None else None,entry=controls.entry.status(now)),
             settings=settings,inputs=list(controls.levels),last_key=self.last_key,last_key_at=int(self.last_key_at),
             audio=dict(volume=self.volume,muted=self.audio.muted,backend=str(self.audio.backend or 'unavailable'),output_device=self.audio.environment.get('ZOCO_AUDIO_TARGET','configured default') if hasattr(self.audio,'environment') else 'configured default'),
-            capabilities=dict(module_count=1,module_pixels=16,ring_customization=False,laser_switching=True,powered_calibration=True,automatic_calibration=True,all_beams_check=True,rfid=True,hazer=False,door=False),
+            capabilities=dict(module_count=1,module_pixels=16,ring_customization=False,laser_switching=True,powered_calibration=True,automatic_calibration=True,all_beams_check=True,keypad_layout='storm_12',staff_key_controls=True,rfid=True,hazer=False,door=False),
             firmware_version=getattr(self,'version','unconfirmed'),python_version=getattr(self,'version','unconfirmed'),serial_port=getattr(self,'serial_port','unconfirmed'),
-            laser_command_on=self.display()[0],laser_seconds_remaining=max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('alignment','module','capture','auto','beams') else 0,
+            staff_hold_seconds=getattr(self,'staff_hold_seconds',0),laser_command_on=self.display()[0],laser_seconds_remaining=max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('alignment','module','capture','auto','beams') else 0,
             test=self.test['kind'] if self.test else 'none',capture_samples=len(self.test['values']) if self.test and self.test['kind'] in ('capture','auto','beams') else 0,
             beam_check=self.beam_check,beam_check_step=self.test['phase'] if self.test and self.test['kind']=='beams' else 'none',
             calibration_step=self.test['phase'] if self.test and self.test['kind']=='auto' else ('saving' if self.test and self.test['kind']=='apply' else 'none'))
@@ -196,7 +196,7 @@ class Maintenance:
         if self.pending and self.pending['expires_at']<=self.wall():
             pending=self.pending;self.pending=None
             self.complete(pending,'expired','local_confirmation_expired',controls)
-        if key=='C' and (self.pending or self.enabled):
+        if key in ('C','5') and (self.pending or self.enabled):
             self.enabled=True;self.local_until=self.wall()+300;self.save()
             if self.pending:
                 pending=self.pending;self.pending=None;self.complete(pending,'completed','maintenance_enabled',controls)
@@ -207,7 +207,7 @@ class Maintenance:
                 pending=self.pending;self.pending=None;self.complete(pending,'failed','local_cancelled',controls)
             self.enabled=False;self.local_until=0;controls.result=None;self.save()
             return True
-        if key=='D':
+        if key=='D' or (key=='*' and (self.pending or self.enabled)):
             self.cancel_test(controls)
             if self.pending:
                 pending=self.pending;self.pending=None;self.complete(pending,'failed','local_cancelled',controls)
@@ -299,7 +299,7 @@ class Maintenance:
             elif action=='start_lock':
                 self.play_locked=params['locked'];controls.play_locked=self.play_locked;self.save()
                 self.complete(command,'completed','new_games_disabled' if self.play_locked else 'new_games_enabled',controls)
-            elif not self.local_enabled():self.complete(command,'failed','press_C_in_maintenance_first',controls)
+            elif not self.local_enabled():self.complete(command,'failed','press_5_in_maintenance_first',controls)
             elif self.test:self.complete(command,'failed','test_busy',controls)
             elif action=='beams_check':
                 enabled=list(controls.settings.enabled_beams or (True,True))[0]

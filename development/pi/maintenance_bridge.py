@@ -55,7 +55,7 @@ class Bridge:
             state=json.loads((self.folder/'state.json').read_text())
             ready=time.time()-path.stat().st_mtime<20 and m.get('maintenance_enabled') is True and m.get('maintenance_local_enabled') is True and state.get('local_until',0)>time.time()
         except (OSError,ValueError,KeyError):ready=False
-        if not ready:self.result(command,'failed','press_C_in_maintenance_first');return
+        if not ready:self.result(command,'failed','press_5_in_maintenance_first');return
         atomic_json(marker,dict(started_at=int(time.time())))
         try:
             subprocess.run(['sudo','-n','/usr/bin/systemctl','stop','zoco-game.service'],check=True,timeout=12,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)

@@ -18,7 +18,7 @@ def reader_reply(line):
     return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register"),values))
 
 
-VERSION = "bench-0.18.1"
+VERSION = "bench-0.19.0"
 
 
 class Controls:
@@ -138,6 +138,33 @@ class Controls:
 
 
 
+class StaffKeys:
+    """Release-aware staff controls; no extra firmware queries or serial traffic."""
+    def __init__(self,maintenance,controls):
+        self.maintenance=maintenance;self.controls=controls;self.held=None;self.since=0;self.fired=False
+    def key(self,key,now):
+        if key!=self.held:self.held=key;self.since=now;self.fired=False
+        self.maintenance.staff_hold_seconds=0
+        if key is None:return
+        m=self.maintenance;m.last_key=key;m.last_key_at=m.wall()
+        if m.enabled or m.pending:self.controls.entry.reset('maintenance')
+        if not m.local_key(key,self.controls):self.controls.key(key,now)
+    def tick(self,now):
+        m=self.maintenance
+        elapsed=max(0,now-self.since) if self.held=='0' and not self.fired else 0
+        m.staff_hold_seconds=min(10,int(elapsed))
+        if elapsed>=10:
+            m.local_key('D',self.controls)  # Cancel tests, pending confirmation and sound.
+            m.local_key('B',self.controls)  # Clear maintenance and its local enable.
+            self.controls.key('D',now)     # Stop gameplay and clear mission entry.
+            self.controls.tick(now);self.controls.result=None;self.controls.result_red_at=now
+            self.fired=True;m.staff_hold_seconds=0;m.last_key='0 held: stopped';m.last_key_at=m.wall();m.next_live=0
+            print('Held 0: game/tests/audio stopped; maintenance exited. Release 0 before entering a code.',flush=True)
+    def countdown(self,now):
+        if self.held=='0' and not self.fired and now-self.since>=1:return max(0,10-int(now-self.since))
+        return None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", action="version", version=VERSION)
@@ -192,7 +219,7 @@ def main():
             replies.append((expected, time.monotonic() + 1, callback))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.18.1")
+            initial("HELLO", "HELLO 1 bench-0.19.0")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
@@ -212,10 +239,11 @@ def main():
             pending = bytearray()
             next_hb = next_poll = next_light = next_rfid = 0
             previous = None
+            staff_keys=StaffKeys(maintenance,controls)
             shown = None
-            print("RFID + code: 77004# keys | 40077# keys accessible | 16646# Black Hat/Vexed | 64661# accessible. Five-second entry windows; * clears; D stops. A no longer starts games.", flush=True)
+            print("RFID + code: 77004# keys | 40077# keys accessible | 16646# Black Hat/Vexed | 64661# accessible. Five-second entry windows; * clears; hold 0 for ten seconds to stop and return to idle.", flush=True)
             print("Valid RFID + code starts preparation, then five-second admission before countdown. Reader: " + ("ready" if controls.reader_ready else "missing — wire RC522 before starting"), flush=True)
-            print("Portal maintenance requires local C confirmation. C renews test enable; D cancels tests/sound; B exits maintenance locally.",flush=True)
+            print("Portal maintenance requires local 5 confirmation. 5 renews test enable; * cancels tests/sound; hold 0 for ten seconds to exit maintenance and stop gameplay.",flush=True)
             print("Latch requires a fresh OFF→ON during RUNNING. Keys objective: 1,3,2,4.", flush=True)
             print("Beam 1 input = calibrated TEMT6000 A0; Mega D9 = Nano module 1 / beam 1; built-in LED = beam 1; D5 = beam 2; RGB = combined status.", flush=True)
             print(f"Timing preparation/game/cooldown/warmup: {controls.settings.startup}/{controls.settings.duration}/{controls.settings.cooldown}/{controls.settings.warmup} seconds; break limit {controls.settings.max_breaks}", flush=True)
@@ -248,22 +276,24 @@ def main():
                         if not replies or replies[0][0]!="RFID STATUS":raise RuntimeError("Unexpected RFID health reply")
                         replies.popleft();controls.reader_ready,controls.reader_diagnostics=reader_reply(line)
                         if not controls.reader_ready:controls.entry.reset('reader_unavailable')
-                    elif line == "KEY UP": pass
-                    elif line == "KEY INVALID": print("Press one keypad key at a time.", flush=True)
+                    elif line in ("KEY UP","KEYPAD MISSING"): staff_keys.key(None,now)
+                    elif line == "KEY INVALID":
+                        staff_keys.key(None,now);print("Press one keypad key at a time.", flush=True)
                     elif len(words) == 2 and words[0] == "KEY" and len(words[1]) == 1 and words[1] in "0123456789ABCD*#":
-                        maintenance.last_key=words[1];maintenance.last_key_at=maintenance.wall()
-                        if maintenance.enabled or maintenance.pending:controls.entry.reset("maintenance")
-                        if not maintenance.local_key(words[1],controls):controls.key(words[1],now)
+                        staff_keys.key(words[1],now)
                     elif replies and line == replies[0][0]:
                         reply=replies.popleft()
                         if reply[2]:reply[2]()
                     elif line: raise RuntimeError(f"Controller fault: {line}")
                 if replies and now > replies[0][1]: raise RuntimeError("Controller acknowledgment timed out")
+                staff_keys.tick(now)
                 controls.tick(now)
                 sounds.update(controls, now)
                 maintenance.tick(controls,now,serial_idle=not replies,previous=previous)
                 if maintenance.enabled or maintenance.pending:controls.entry.reset("maintenance")
                 desired = maintenance.display() if maintenance.enabled or maintenance.pending else controls.display(now)
+                hold_countdown=staff_keys.countdown(now)
+                if hold_countdown is not None:desired=(desired[0],desired[1],hold_countdown,desired[3])
                 if previous is None or desired[0] != previous[0]: send("ON" if desired[0] else "PAUSE", "OK ON" if desired[0] else "OK PAUSE")
                 if previous is None or desired[1] != previous[1]: send("LED ON" if desired[1] else "LED OFF", "OK LED ON" if desired[1] else "OK LED OFF")
                 if previous is None or desired[2] != previous[2]: send(f"TIME {desired[2]}", "OK TIME")
@@ -283,7 +313,7 @@ def main():
                 status = (controls.mode, g.state if g else "idle", desired[2], g.breaks if g else 0,
                     g.key_progress if g else 0, g.objective if g else False, controls.result, tuple(g.enabled if g else (controls.last_enabled or [])), controls.reader_ready, controls.entry.reason, len(controls.entry.code), controls.scan_count)
                 if status != shown:
-                    if controls.result: print(f"RESULT: {controls.result[0]} | breaks {controls.result[1]} | A to play again", flush=True)
+                    if controls.result: print(f"RESULT: {controls.result[0]} | breaks {controls.result[1]} | RFID + mission code to play again", flush=True)
                     elif g: print(f"{g.state.upper()} | {desired[2]}s | breaks {g.breaks}/{g.settings.max_breaks} | keys {g.key_progress}/4 | objective {g.objective} | excluded beams {','.join(str(i+1) for i,v in enumerate(g.enabled) if not v) or 'none'}", flush=True)
                     else: print(f"IDLE — RFID {'ready' if controls.reader_ready else 'missing'} | {controls.entry.reason} | code {len(controls.entry.code)}/6 characters | scans {controls.scan_count}", flush=True)
                     shown = status
