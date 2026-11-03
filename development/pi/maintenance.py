@@ -12,7 +12,7 @@ from game_reporting import atomic_json
 
 ID = re.compile(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\Z')
 COLORS = ('RED','GREEN','BLUE','YELLOW','PURPLE','OFF')
-ACTIONS = ('enter_maintenance','leave_maintenance','stop_game','snapshot','audio_play','stop_audio','audio_mute','rgb_test','display_test','restart_game','beams_check','receiver_auto','receiver_capture','receiver_apply','receiver_thresholds','module_test','laser_align','game_settings','start_lock','audio_volume','audio_output_test','service_start','service_stop','reboot_pi','software_reinstall')
+ACTIONS = ('enter_maintenance','leave_maintenance','stop_game','snapshot','audio_play','stop_audio','audio_mute','rgb_test','display_test','restart_game','keypad_start','keypad_end','beams_check','receiver_auto','receiver_capture','receiver_apply','receiver_thresholds','module_test','laser_align','game_settings','start_lock','audio_volume','audio_output_test','service_start','service_stop','reboot_pi','software_reinstall')
 
 
 def validate(command, identity, wall):
@@ -51,7 +51,7 @@ class Maintenance:
         self.enabled=False;self.local_until=0;self.pending=None;self.test=None;self.next_scan=0
         self.send=None;self.raw=None;self.raw_at=-100;self.last_key='none';self.last_key_at=0;self.connected=False
         self.thresholds=dict(break_below=20,clear_above=41);self.capture_values={};self.candidate=None;self.next_live=0
-        self.beam_check=None
+        self.beam_check=None;self.keypad_session=None
         self.volume=100;self.play_locked=False;self.saved_settings=None
         receiver_file=self.folder/'receiver-settings.json'
         if receiver_file.exists():self.thresholds=validate_thresholds(json.loads(receiver_file.read_text())['thresholds'])
@@ -78,7 +78,7 @@ class Maintenance:
     def metrics(self):
         return dict(maintenance_protocol=2,maintenance_enabled=self.enabled,
             maintenance_local_enabled=self.local_enabled(),maintenance_pending=self.pending is not None,
-            maintenance_test_active=self.test is not None)
+            maintenance_test_active=self.test is not None or self.keypad_active())
 
     def configure_controls(self,controls):
         controls.play_locked=self.play_locked
@@ -98,10 +98,10 @@ class Maintenance:
             rfid=dict(diagnostics=controls.reader_diagnostics,ready=controls.reader_ready,scans_this_run=controls.scan_count,seconds_since_scan=round(now-controls.last_scan_at,1) if controls.last_scan_at is not None else None,entry=controls.entry.status(now)),
             settings=settings,inputs=list(controls.levels),last_key=self.last_key,last_key_at=int(self.last_key_at),
             audio=dict(volume=self.volume,muted=self.audio.muted,backend=str(self.audio.backend or 'unavailable'),output_device=self.audio.environment.get('ZOCO_AUDIO_TARGET','configured default') if hasattr(self.audio,'environment') else 'configured default'),
-            capabilities=dict(module_count=1,module_pixels=16,ring_customization=False,laser_switching=True,powered_calibration=True,automatic_calibration=True,all_beams_check=True,keypad_layout='storm_12',staff_key_controls=True,rfid=True,hazer=False,door=False),
+            capabilities=dict(module_count=1,module_pixels=16,ring_customization=False,laser_switching=True,powered_calibration=True,automatic_calibration=True,all_beams_check=True,keypad_layout='storm_12',staff_key_controls=True,isolated_keypad_test=True,rfid=True,hazer=False,door=False),
             firmware_version=getattr(self,'version','unconfirmed'),python_version=getattr(self,'version','unconfirmed'),serial_port=getattr(self,'serial_port','unconfirmed'),
-            staff_hold_seconds=getattr(self,'staff_hold_seconds',0),laser_command_on=self.display()[0],laser_seconds_remaining=max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('alignment','module','capture','auto','beams') else 0,
-            test=self.test['kind'] if self.test else 'none',capture_samples=len(self.test['values']) if self.test and self.test['kind'] in ('capture','auto','beams') else 0,
+            keypad_test=self.keypad_session,staff_hold_seconds=getattr(self,'staff_hold_seconds',0),laser_command_on=self.display()[0],laser_seconds_remaining=max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('alignment','module','capture','auto','beams') else 0,
+            test=self.test['kind'] if self.test else ('keypad' if self.keypad_active() else 'none'),capture_samples=len(self.test['values']) if self.test and self.test['kind'] in ('capture','auto','beams') else 0,
             beam_check=self.beam_check,beam_check_step=self.test['phase'] if self.test and self.test['kind']=='beams' else 'none',
             calibration_step=self.test['phase'] if self.test and self.test['kind']=='auto' else ('saving' if self.test and self.test['kind']=='apply' else 'none'))
 
@@ -178,13 +178,28 @@ class Maintenance:
         self.next_live=0
         path=self.folder/'results'/(command['id']+'.json')
         if not path.exists():atomic_json(path,dict(id=command['id'],device_id=self.identity,status=status,reason=reason,
-            executed_at=int(self.wall()),snapshot=dict(self.metrics(),inputs=list(controls.levels),game_running=controls.game is not None,rfid=dict(diagnostics=controls.reader_diagnostics,ready=controls.reader_ready,scans_this_run=controls.scan_count,entry_state=controls.entry.reason),receiver=dict(raw=self.raw,thresholds=self.thresholds,captures={k:summarize(v) for k,v in self.capture_values.items()},candidate=self.candidate),play_locked=self.play_locked,volume=self.volume,beam_check=self.beam_check)))
+            executed_at=int(self.wall()),snapshot=dict(self.metrics(),inputs=list(controls.levels),game_running=controls.game is not None,rfid=dict(diagnostics=controls.reader_diagnostics,ready=controls.reader_ready,scans_this_run=controls.scan_count,entry_state=controls.entry.reason),receiver=dict(raw=self.raw,thresholds=self.thresholds,captures={k:summarize(v) for k,v in self.capture_values.items()},candidate=self.candidate),play_locked=self.play_locked,volume=self.volume,beam_check=self.beam_check,keypad_test=self.keypad_session)))
         atomic_json(self.folder/'outbox'/path.name,json.loads(path.read_text()))
         (self.folder/'inbox'/(command['id']+'.json')).unlink(missing_ok=True)
+
+    def keypad_active(self):return self.keypad_session is not None and self.keypad_session['status']=='running'
+
+    def keypad_key(self,key):
+        if not self.keypad_active():return
+        session=self.keypad_session
+        session.update(last_key=key,last_key_at=int(self.wall()),press_count=session['press_count']+1)
+        if key not in session['seen']:session['seen'].append(key)
+        self.next_live=0
+
+    def end_keypad(self,reason):
+        if self.keypad_active():
+            self.keypad_session.update(status='ended',reason=reason,ended_at=int(self.wall()))
+            self.staff_hold_seconds=0;self.next_live=0
 
     def stop_audio(self):self.audio.cancel();self.effects.cancel()
 
     def cancel_test(self,controls,reason='cancelled'):
+        self.end_keypad(reason)
         if self.test:
             if self.test['kind']=='beams':
                 self.beam_check.update(status='cancelled' if reason=='cancelled' else 'unconfirmed',reason=reason,all_clear=False,finished_at=int(self.wall()),outputs_off_confirmed=False)
@@ -193,6 +208,7 @@ class Maintenance:
         self.stop_audio()
 
     def local_key(self,key,controls):
+        if self.keypad_active():return True
         if self.pending and self.pending['expires_at']<=self.wall():
             pending=self.pending;self.pending=None
             self.complete(pending,'expired','local_confirmation_expired',controls)
@@ -224,6 +240,9 @@ class Maintenance:
 
     def tick(self,controls,now,serial_idle=False,previous=None):
         wall=self.wall()
+        if self.keypad_active():
+            if not self.local_enabled():self.end_keypad('local_enable_expired')
+            elif wall>=self.keypad_session['ends_at']:self.end_keypad('time_limit_reached')
         if self.pending and self.pending['expires_at']<=wall:
             pending=self.pending;self.pending=None;self.complete(pending,'expired','local_confirmation_expired',controls)
         if self.test:
@@ -284,6 +303,8 @@ class Maintenance:
                 self.cancel_test(controls);self.complete(command,'completed','sound_stopped',controls)
                 for other in commands:
                     if other['action']=='audio_play' and not (self.folder/'results'/(other['id']+'.json')).exists():self.complete(other,'failed','cancelled_by_stop',controls)
+            elif action=='keypad_end':
+                self.end_keypad('ended_from_portal');self.complete(command,'completed','keypad_test_ended',controls)
             elif action=='snapshot':self.complete(command,'completed','observed_inputs_captured',controls)
             elif action=='enter_maintenance':
                 if controls.game:controls.game.finish('stopped');controls.tick(now)
@@ -300,7 +321,11 @@ class Maintenance:
                 self.play_locked=params['locked'];controls.play_locked=self.play_locked;self.save()
                 self.complete(command,'completed','new_games_disabled' if self.play_locked else 'new_games_enabled',controls)
             elif not self.local_enabled():self.complete(command,'failed','press_5_in_maintenance_first',controls)
-            elif self.test:self.complete(command,'failed','test_busy',controls)
+            elif self.test or self.keypad_active():self.complete(command,'failed','test_busy',controls)
+            elif action=='keypad_start':
+                self.stop_audio()
+                self.keypad_session=dict(id=command['id'],status='running',started_at=int(wall),ends_at=int(wall)+120,last_key=None,last_key_at=None,press_count=0,seen=[])
+                self.next_live=0;self.complete(command,'completed','keypad_test_started_two_minutes',controls)
             elif action=='beams_check':
                 enabled=list(controls.settings.enabled_beams or (True,True))[0]
                 self.beam_check=dict(command_id=command['id'],started_at=int(wall),status='running',all_clear=False,configured_count=1,tested_count=1 if enabled else 0,outputs_off_confirmed=False,modules=[])

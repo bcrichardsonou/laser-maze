@@ -18,7 +18,7 @@ def reader_reply(line):
     return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register"),values))
 
 
-VERSION = "bench-0.19.0"
+VERSION = "bench-0.19.1"
 
 
 class Controls:
@@ -141,16 +141,22 @@ class Controls:
 class StaffKeys:
     """Release-aware staff controls; no extra firmware queries or serial traffic."""
     def __init__(self,maintenance,controls):
-        self.maintenance=maintenance;self.controls=controls;self.held=None;self.since=0;self.fired=False
+        self.maintenance=maintenance;self.controls=controls;self.held=None;self.since=0;self.fired=False;self.suppressed=False
     def key(self,key,now):
         if key!=self.held:self.held=key;self.since=now;self.fired=False
         self.maintenance.staff_hold_seconds=0
-        if key is None:return
+        if key is None:self.suppressed=False;return
         m=self.maintenance;m.last_key=key;m.last_key_at=m.wall()
+        if m.keypad_active():
+            self.suppressed=True;m.keypad_key(key);return
+        if self.suppressed:return
         if m.enabled or m.pending:self.controls.entry.reset('maintenance')
         if not m.local_key(key,self.controls):self.controls.key(key,now)
     def tick(self,now):
         m=self.maintenance
+        if m.keypad_active():
+            self.suppressed=self.held is not None;m.staff_hold_seconds=0;return
+        if self.suppressed:m.staff_hold_seconds=0;return
         elapsed=max(0,now-self.since) if self.held=='0' and not self.fired else 0
         m.staff_hold_seconds=min(10,int(elapsed))
         if elapsed>=10:
@@ -161,7 +167,7 @@ class StaffKeys:
             self.fired=True;m.staff_hold_seconds=0;m.last_key='0 held: stopped';m.last_key_at=m.wall();m.next_live=0
             print('Held 0: game/tests/audio stopped; maintenance exited. Release 0 before entering a code.',flush=True)
     def countdown(self,now):
-        if self.held=='0' and not self.fired and now-self.since>=1:return max(0,10-int(now-self.since))
+        if not self.maintenance.keypad_active() and not self.suppressed and self.held=='0' and not self.fired and now-self.since>=1:return max(0,10-int(now-self.since))
         return None
 
 
@@ -219,7 +225,7 @@ def main():
             replies.append((expected, time.monotonic() + 1, callback))
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.19.0")
+            initial("HELLO", "HELLO 1 bench-0.19.1")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
