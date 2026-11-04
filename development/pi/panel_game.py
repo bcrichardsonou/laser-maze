@@ -18,7 +18,7 @@ def reader_reply(line):
     return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register"),values))
 
 
-VERSION = "bench-0.20.0"
+VERSION = "bench-0.20.1"
 
 
 class Controls:
@@ -138,6 +138,26 @@ class Controls:
 
 
 
+class StatusFrames:
+    """Send LED frames with an empty serial pipeline; defer writes until ACK."""
+    def __init__(self,port,replies,clock=time.monotonic):
+        self.port=port;self.replies=replies;self.clock=clock;self.waiting=False
+        self.deferred=deque();self.until=0;self.next_frame=0
+    def send(self,text,expected,callback=None):
+        if self.waiting:self.deferred.append((text,expected,callback));return
+        self.port.write((text+'\n').encode());self.port.flush()
+        self.replies.append((expected,self.clock()+1,callback))
+        if text.startswith('RGB '):self.until=0 if text=='RGB OFF' else self.clock()+1.4
+    def finished(self):
+        self.waiting=False
+        while self.deferred:self.send(*self.deferred.popleft())
+    def tick(self,now):
+        if self.waiting or self.replies or self.deferred or now>=self.until or now<self.next_frame:return
+        self.next_frame=now+.02;self.waiting=True
+        self.port.write(b'FRAME\n');self.port.flush()
+        self.replies.append(('OK FRAME',self.clock()+1,self.finished))
+
+
 class StaffKeys:
     """Release-aware staff controls; no extra firmware queries or serial traffic."""
     def __init__(self,maintenance,controls):
@@ -220,12 +240,11 @@ def main():
             reply = port.readline().decode("ascii", errors="replace").strip()
             if reply != expected: raise RuntimeError(f"{text}: {reply}")
         replies = deque()
-        def send(text, expected, callback=None):
-            port.write((text + "\n").encode()); port.flush()
-            replies.append((expected, time.monotonic() + 1, callback))
+        status_frames=StatusFrames(port,replies)
+        send=status_frames.send
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.20.0")
+            initial("HELLO", "HELLO 1 bench-0.20.1")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
@@ -295,7 +314,7 @@ def main():
                 staff_keys.tick(now)
                 controls.tick(now)
                 sounds.update(controls, now)
-                maintenance.tick(controls,now,serial_idle=not replies,previous=previous)
+                maintenance.tick(controls,now,serial_idle=not replies and not status_frames.deferred,previous=previous)
                 if maintenance.enabled or maintenance.pending:controls.entry.reset("maintenance")
                 desired = maintenance.display() if maintenance.enabled or maintenance.pending else controls.display(now)
                 hold_countdown=staff_keys.countdown(now)
@@ -315,6 +334,7 @@ def main():
                 if now>=next_rfid:
                     send("RFID","RFID STATUS");next_rfid=now+2
                 maintenance.publish(controls,now)
+                status_frames.tick(now)
                 g = controls.game
                 status = (controls.mode, g.state if g else "idle", desired[2], g.breaks if g else 0,
                     g.key_progress if g else 0, g.objective if g else False, controls.result, tuple(g.enabled if g else (controls.last_enabled or [])), controls.reader_ready, controls.entry.reason, len(controls.entry.code), controls.scan_count)

@@ -170,6 +170,12 @@ void panelInputSnapshot() {
 }
 
 bool panelCommand(const char *text, bool armed) {
+  // Pi sends FRAME only with an empty request pipeline, and waits for this ACK
+  // before writing again. NeoPixel.show masks interrupts for about 1.3 ms.
+  if (strcmp(text, "FRAME") == 0) {
+    if (!armed) {Serial.println("ERR DISARMED"); return true;}
+    updateStatusAnimation(); Serial.println("OK FRAME"); return true;
+  }
   if (strncmp(text, "TIME ", 5) == 0 || strcmp(text, "DISPLAY TEST") == 0) {
     if (!armed) {Serial.println("ERR DISARMED"); return true;}
     if (strcmp(text, "DISPLAY TEST") == 0) {
@@ -212,7 +218,6 @@ bool panelCommand(const char *text, bool armed) {
 }
 
 void updatePanel(bool armed) {
-  updateStatusAnimation();
   unsigned long now = millis();
   for (uint8_t i = 0; i < 3; i++) {
     bool value = i == 0 ? receiverBroken(analogRead(A0), panelRaw[0]) : digitalRead(PANEL_INPUT_PINS[i]) == HIGH;
