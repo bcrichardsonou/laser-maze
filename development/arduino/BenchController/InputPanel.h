@@ -17,7 +17,9 @@ unsigned long keyChangedAt = 0;
 // Storm PLX12T201: connector 1/2/8/7 -> P0/P1/P2/P3 (rows),
 // connector 3/4/5 -> P4/P5/P6 (columns); connector 6 and P7 unused.
 const char STORM_KEYMAP[] = "123F456F789F*0#F";
-const uint8_t STATUS_PIXEL_COUNT = 8;
+const uint8_t STATUS_ROWS = 14;
+const uint8_t STATUS_PIXELS_PER_ROW = 3;
+const uint8_t STATUS_PIXEL_COUNT = STATUS_ROWS * STATUS_PIXELS_PER_ROW;
 Adafruit_NeoPixel panelPixel(STATUS_PIXEL_COUNT, 6, NEO_GRB + NEO_KHZ800);
 TM1637Display panelTimer(7, 8);
 
@@ -33,12 +35,70 @@ bool panelTime(const char *text) {
   return true;
 }
 
+// Center-out bloom: paired rows 6/7, 5/8, ... 0/13 (zero-based).
+// Snapshot each row when retargeting so rapid status changes do not snap.
+uint32_t statusTarget = 0, statusFrom[STATUS_ROWS] = {};
+unsigned long statusStarted = 0, statusFrameAt = 0;
+bool statusAnimating = false;
+const unsigned long STATUS_TRANSITION_MS = 700;
+
+uint8_t statusBlend(uint8_t from, uint8_t to, uint8_t amount) {
+  return ((uint16_t)from * (255 - amount) + (uint16_t)to * amount + 127) / 255;
+}
+
 void panelColor(uint8_t r, uint8_t g, uint8_t b) {
   uint32_t color = panelPixel.Color(r, g, b);
-  if (panelPixel.getPixelColor(0) != color) {
-    for (uint8_t i = 0; i < STATUS_PIXEL_COUNT; ++i) panelPixel.setPixelColor(i, color);
-    panelPixel.show();
+  if (color == 0) {
+    statusTarget = 0; statusAnimating = false;
+    bool changed = false;
+    for (uint8_t i = 0; i < STATUS_PIXEL_COUNT; ++i) if (panelPixel.getPixelColor(i)) {changed = true; break;}
+    if (changed) {panelPixel.clear(); panelPixel.show();}
+    return;
   }
+  if (color == statusTarget) return;
+  for (uint8_t row = 0; row < STATUS_ROWS; ++row) statusFrom[row] = panelPixel.getPixelColor(row * STATUS_PIXELS_PER_ROW);
+  statusTarget = color; statusStarted = millis(); statusFrameAt = statusStarted - 20;
+  statusAnimating = true;
+}
+
+void updateStatusAnimation() {
+  if (!statusAnimating) return;
+  unsigned long now = millis(), elapsed = now - statusStarted;
+  if ((unsigned long)(now - statusFrameAt) < 20) return;
+  statusFrameAt = now;
+  bool wigwag = statusTarget == 0xFF0000UL || statusTarget == 0xFFB400UL;
+  unsigned long duration = wigwag ? 1250 : STATUS_TRANSITION_MS;
+  // Seven symmetric row pairs, with a two-pair feathered edge.
+  uint16_t progress = elapsed >= STATUS_TRANSITION_MS ? 8 * 256 : elapsed * (8UL * 256) / STATUS_TRANSITION_MS;
+  bool changed = false;
+  for (uint8_t row = 0; row < STATUS_ROWS; ++row) {
+    uint8_t distance = row < 7 ? 6 - row : row - 7;
+    int16_t phase = (int16_t)progress - distance * 256;
+    uint16_t t = phase <= 0 ? 0 : phase >= 512 ? 255 : (uint32_t)phase * 255 / 512;
+    // Integer smoothstep; bounded 32-bit intermediates on AVR.
+    uint8_t fade = ((uint32_t)t * t * (765 - 2 * t) + 32512) / 65025;
+    uint32_t from = statusFrom[row];
+    uint32_t color;
+    if (wigwag) {
+      // Two bottom/top alternations, then a 250 ms fade to the solid color.
+      bool bright = elapsed < 1000 ? ((row < 7) == ((elapsed / 250) % 2 == 0)) : row >= 7;
+      uint8_t gain = bright ? 255 : elapsed >= 1250 ? 255 : elapsed >= 1000 ? 32 + (elapsed - 1000) * 223 / 250 : 32;
+      uint8_t red = (uint16_t)(uint8_t)(statusTarget >> 16) * gain / 255;
+      uint8_t green = (uint16_t)(uint8_t)(statusTarget >> 8) * gain / 255;
+      uint8_t blue = (uint16_t)(uint8_t)statusTarget * gain / 255;
+      uint8_t entry = elapsed < 100 ? elapsed * 255 / 100 : 255;
+      color = panelPixel.Color(statusBlend(from >> 16, red, entry), statusBlend(from >> 8, green, entry), statusBlend(from, blue, entry));
+    } else {
+      color = panelPixel.Color(statusBlend(from >> 16, statusTarget >> 16, fade),
+        statusBlend(from >> 8, statusTarget >> 8, fade), statusBlend(from, statusTarget, fade));
+    }
+    for (uint8_t col = 0; col < STATUS_PIXELS_PER_ROW; ++col) {
+      uint8_t pixel = row * STATUS_PIXELS_PER_ROW + col;
+      if (panelPixel.getPixelColor(pixel) != color) {panelPixel.setPixelColor(pixel, color); changed = true;}
+    }
+  }
+  if (changed) panelPixel.show();
+  if (elapsed >= duration) statusAnimating = false;
 }
 
 void panelOff() {
@@ -152,6 +212,7 @@ bool panelCommand(const char *text, bool armed) {
 }
 
 void updatePanel(bool armed) {
+  updateStatusAnimation();
   unsigned long now = millis();
   for (uint8_t i = 0; i < 3; i++) {
     bool value = i == 0 ? receiverBroken(analogRead(A0), panelRaw[0]) : digitalRead(PANEL_INPUT_PINS[i]) == HIGH;
