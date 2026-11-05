@@ -18,7 +18,7 @@ def reader_reply(line):
     return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register"),values))
 
 
-VERSION = "bench-0.20.1"
+VERSION = "bench-0.21.0"
 
 
 class Controls:
@@ -244,7 +244,7 @@ def main():
         send=status_frames.send
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.20.1")
+            initial("HELLO", "HELLO 1 bench-0.21.0")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
@@ -295,12 +295,13 @@ def main():
                     elif line == "RFID TAG":
                         if maintenance.enabled or maintenance.pending:
                             controls.entry.reset('maintenance')
-                            controls.last_scan_at=now;controls.scan_count+=1
+                            controls.last_scan_at=now;controls.scan_count+=1;maintenance.rfid_scan()
                         else:controls.swipe(now)
                     elif line.startswith(("RFID READY ", "RFID MISSING ")):
                         if not replies or replies[0][0]!="RFID STATUS":raise RuntimeError("Unexpected RFID health reply")
-                        replies.popleft();controls.reader_ready,controls.reader_diagnostics=reader_reply(line)
+                        reply=replies.popleft();controls.reader_ready,controls.reader_diagnostics=reader_reply(line)
                         if not controls.reader_ready:controls.entry.reset('reader_unavailable')
+                        if reply[2]:reply[2]()
                     elif line in ("KEY UP","KEYPAD MISSING"): staff_keys.key(None,now)
                     elif line == "KEY INVALID":
                         staff_keys.key(None,now);print("Press one keypad key at a time.", flush=True)

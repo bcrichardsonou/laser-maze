@@ -26,7 +26,7 @@ bool rfidProbe() {
 void rfidBegin() {
   SPI.begin();
   rfidInitialize();
-  rfidReady = rfidProbe();
+  rfidReady = rfidProbe() && (entryReader.PCD_ReadRegister(MFRC522::TxControlReg) & 0x03) == 0x03;
 }
 
 bool rfidCommand(const char *text) {
@@ -36,9 +36,14 @@ bool rfidCommand(const char *text) {
     Serial.print(' ');Serial.print(rfidSelectStatus);Serial.print(' ');
     Serial.println(entryReader.PCD_GetAntennaGain());return true;
   }
-  if (strcmp(text, "RFID") != 0) return false;
-  if (!rfidReady) rfidInitialize();
-  rfidReady = rfidProbe();
+  bool reset = strcmp(text, "RFID RESET") == 0;
+  if (strcmp(text, "RFID") != 0 && !reset) return false;
+  bool present = rfidProbe();
+  bool antennaOn = present && (entryReader.PCD_ReadRegister(MFRC522::TxControlReg) & 0x03) == 0x03;
+  // A quick power interruption can happen between health polls: VersionReg
+  // comes back but the antenna drivers default OFF. Recover that state too.
+  if (reset || !rfidReady || (present && !antennaOn)) rfidInitialize();
+  rfidReady = rfidProbe() && (entryReader.PCD_ReadRegister(MFRC522::TxControlReg) & 0x03) == 0x03;
   Serial.print(rfidReady ? "RFID READY " : "RFID MISSING ");
   Serial.print(rfidResponses);Serial.print(' ');Serial.print(rfidSelectFailures);
   Serial.print(' ');Serial.print(rfidRequestStatus);Serial.print(' ');
