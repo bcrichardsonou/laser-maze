@@ -3,7 +3,7 @@
 #include "RfidReader.h"
 const unsigned long WATCHDOG_MS = 1000;
 const uint8_t MODULE1_PIN = 9; // Mega D9 -> Nano D2, with Nano-side 10k pulldown.
-const char VERSION[] = "bench-0.21.0";
+const char VERSION[] = "bench-0.21.1";
 bool stableBroken = false;
 char command[32];
 unsigned int used = 0;

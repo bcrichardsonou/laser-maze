@@ -12,13 +12,13 @@ from entry_authorization import Entry
 
 def reader_reply(line):
     words=line.split()
-    if len(words)!=7 or words[0]!="RFID" or words[1] not in ("READY","MISSING") or any(not v.isdigit() for v in words[2:]):raise RuntimeError("Invalid RFID health reply")
+    if len(words) not in (7,8) or words[0]!="RFID" or words[1] not in ("READY","MISSING") or any(not v.isdigit() for v in words[2:]):raise RuntimeError("Invalid RFID health reply")
     values=list(map(int,words[2:]))
     if any(v>4294967295 for v in values[:2]) or any(v>255 for v in values[2:]):raise RuntimeError("Invalid RFID diagnostics range")
-    return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register"),values))
+    return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register","version_register"),values))
 
 
-VERSION = "bench-0.21.0"
+VERSION = "bench-0.21.1"
 
 
 class Controls:
@@ -244,7 +244,7 @@ def main():
         send=status_frames.send
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.21.0")
+            initial("HELLO", "HELLO 1 bench-0.21.1")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.

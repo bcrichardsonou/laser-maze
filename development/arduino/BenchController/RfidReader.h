@@ -1,5 +1,8 @@
 #pragma once
 #include <SPI.h>
+#ifndef MFRC522_SPICLOCK
+#define MFRC522_SPICLOCK (100000u)
+#endif
 #include <MFRC522.h>
 
 // Mega hardware SPI: MISO50, MOSI51, SCK52. All reader inputs need 3.3V logic.
@@ -47,7 +50,8 @@ bool rfidCommand(const char *text) {
   Serial.print(rfidReady ? "RFID READY " : "RFID MISSING ");
   Serial.print(rfidResponses);Serial.print(' ');Serial.print(rfidSelectFailures);
   Serial.print(' ');Serial.print(rfidRequestStatus);Serial.print(' ');
-  Serial.print(rfidSelectStatus);Serial.print(' ');Serial.println(entryReader.PCD_GetAntennaGain());
+  Serial.print(rfidSelectStatus);Serial.print(' ');Serial.print(entryReader.PCD_GetAntennaGain());
+  Serial.print(' ');Serial.println(entryReader.PCD_ReadRegister(MFRC522::VersionReg));
   return true;
 }
 
