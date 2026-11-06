@@ -19,7 +19,7 @@ def reader_reply(line):
     return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register","version_register"),values))
 
 
-VERSION = "bench-0.23.0"
+VERSION = "bench-0.23.1"
 
 
 class Controls:
@@ -35,6 +35,7 @@ class Controls:
         self.fast = fast
         self.admission = 0 if fast else 5
         self.result_red_at = 0
+        self.exit_release_until = 0
         self.settings = Settings(beam_count=2, startup=2, duration=30, cooldown=2, warmup=1) if fast else Settings(beam_count=2)
         if self.physical_single:
             from dataclasses import replace
@@ -73,7 +74,7 @@ class Controls:
             self.game.objective_usb(now);self.usb_armed=False
 
     def entry_idle(self, now):
-        return not self.game and not self.play_locked and not (self.result and now < self.result_red_at)
+        return not self.game and not self.play_locked and now >= self.exit_release_until and not (self.result and now < self.result_red_at)
 
     def start(self, now):
         if not self.entry_idle(now):
@@ -136,19 +137,20 @@ class Controls:
                 if self.reporting: self.reporting.finish(self.game, now)
                 self.last_enabled = list(self.game.enabled)
                 self.result = (self.game.outcome, self.game.breaks)
-                self.result_red_at = now + (0 if self.fast else 10 if self.game.outcome == "win" else 5 if self.game.outcome in ("timeout", "beam_limit") else 0)
+                self.exit_release_until = now + (0 if self.fast else 30)
+                self.result_red_at = self.exit_release_until
                 self.game = None
 
-    def doors(self):
-        # Exit releases on every terminal outcome. Entry remains locked at rest,
-        # opens only during admission; no door-closed feedback is fitted yet.
-        if not self.game:return (True,False)
+    def doors(self, now):
+        # Locked rest; authorization gates admission. Exit release is monotonic
+        # and blocks the next game for its entire 30-second window.
+        if not self.game:return (True,now >= self.exit_release_until)
         return (self.game.state!='admitting',self.game.state in ('starting','admitting','running'))
 
     def display(self, now):
         if not self.game:
             # Completion/exit delay keeps the occupied indication; beam feedback belongs to modules.
-            color = "BLUE" if self.result and now < self.result_red_at else "RED"
+            color = "BLUE" if now < self.exit_release_until or (self.result and now < self.result_red_at) else "RED"
             if self.rfid_entry and self.reader_ready and self.entry_idle(now) and self.entry.scanned and self.entry.deadline is not None and now < self.entry.deadline:
                 color = "PURPLE"
             return (False, False, 0, color)
@@ -267,7 +269,7 @@ def main():
         send=status_frames.send
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.23.0")
+            initial("HELLO", "HELLO 1 bench-0.23.1")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
@@ -345,7 +347,7 @@ def main():
                 maintenance.tick(controls,now,serial_idle=not replies and not status_frames.deferred,previous=previous)
                 if maintenance.enabled or maintenance.pending:controls.entry.reset("maintenance")
                 door_testing=maintenance.test and maintenance.test['kind']=='door'
-                door_state=(False,False) if maintenance.enabled or maintenance.pending else controls.doors()
+                door_state=(False,False) if maintenance.enabled or maintenance.pending else controls.doors(now)
                 if not door_testing and door_state!=previous_doors:
                     text='DOORS %d %d'%door_state
                     def door_ack(state=door_state):maintenance.door_commanded=state;maintenance.next_live=0
