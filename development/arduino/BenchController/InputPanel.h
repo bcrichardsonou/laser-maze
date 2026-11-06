@@ -4,9 +4,9 @@
 #include <TM1637Display.h>
 #include "ReceiverConfig.h"
 
-// Beam 1 is calibrated analog A0; beam 2 is active-high D3. D4 is unused.
+// Only calibrated analog A0 is fitted. Temporary D2/D3/D4 buttons are retired.
 // Third protocol input remains false for compatibility; Pi supplies real USB state.
-const uint8_t PANEL_INPUT_PINS[] = {A0, 3};
+const uint8_t PANEL_INPUT_PINS[] = {A0};
 bool panelRaw[3], panelStable[3];
 unsigned long panelChanged[3];
 bool panelDiagnostic = false;
@@ -116,10 +116,10 @@ void panelBegin() {
   panelPixel.setBrightness(255);
   panelPixel.clear();
   panelPixel.show();
-  for (uint8_t i = 0; i < 2; i++) {
+  for (uint8_t i = 0; i < 1; i++) {
     pinMode(PANEL_INPUT_PINS[i], INPUT);
     // Start unknown/mid-band receiver readings as broken until a clear level is observed.
-    panelRaw[i] = panelStable[i] = i == 0 ? receiverBroken(analogRead(A0), true) : digitalRead(PANEL_INPUT_PINS[i]) == HIGH;
+    panelRaw[i] = panelStable[i] = receiverBroken(analogRead(A0), true);
     panelChanged[i] = millis();
   }
   Wire.begin();
@@ -221,7 +221,7 @@ bool panelCommand(const char *text, bool armed) {
 void updatePanel(bool armed) {
   unsigned long now = millis();
   for (uint8_t i = 0; i < 3; i++) {
-    bool value = i == 0 ? receiverBroken(analogRead(A0), panelRaw[0]) : i == 1 ? digitalRead(PANEL_INPUT_PINS[i]) == HIGH : false;
+    bool value = i == 0 ? receiverBroken(analogRead(A0), panelRaw[0]) : false;
     if (value != panelRaw[i]) {panelRaw[i] = value; panelChanged[i] = now;}
     if (value != panelStable[i] && (unsigned long)(now - panelChanged[i]) >= 30) {
       panelStable[i] = value;

@@ -3,7 +3,17 @@
 #include "RfidReader.h"
 const unsigned long WATCHDOG_MS = 1000;
 const uint8_t MODULE1_PIN = 9; // Mega D9 -> Nano D2, with Nano-side 10k pulldown.
-const char VERSION[] = "bench-0.22.0";
+// Active-high relay modules; external 10k pulldowns hold inputs LOW during reset.
+const uint8_t ENTRY_RELAY_PIN = 22;
+const uint8_t EXIT_RELAY_PIN = 23;
+bool doorTestActive = false;
+unsigned long doorTestStarted = 0;
+void releaseDoors() {
+  doorTestActive = false;
+  digitalWrite(ENTRY_RELAY_PIN, LOW);
+  digitalWrite(EXIT_RELAY_PIN, LOW);
+}
+const char VERSION[] = "bench-0.23.0";
 bool stableBroken = false;
 char command[32];
 unsigned int used = 0;
@@ -19,6 +29,7 @@ void setLaserOutput(bool on) {
 }
 
 void disableOutput() {
+  releaseDoors();
   setLaserOutput(false);
   armed = false;
   panelOff();
@@ -45,6 +56,25 @@ void handleCommand() {
       Serial.println("OK HB");
     } else {
       Serial.println("ERR DISARMED");
+    }
+  } else if (strncmp(command, "DOORTEST ", 9) == 0) {
+    if (!armed || strlen(command) != 10 || (command[9] != '0' && command[9] != '1')) {
+      disableOutput(); Serial.println("ERR DOORTEST");
+    } else {
+      releaseDoors();
+      digitalWrite(command[9] == '0' ? ENTRY_RELAY_PIN : EXIT_RELAY_PIN, HIGH);
+      doorTestStarted = millis(); doorTestActive = true;
+      Serial.print("OK "); Serial.println(command);
+    }
+  } else if (strncmp(command, "DOORS ", 6) == 0) {
+    // Exact protocol: two bits, entry then exit. Never accept malformed output commands.
+    if (strlen(command) != 9 || (command[6] != '0' && command[6] != '1') || command[7] != ' ' || (command[8] != '0' && command[8] != '1') || !armed) {
+      disableOutput(); Serial.println("ERR DOORS");
+    } else {
+      doorTestActive = false;
+      digitalWrite(ENTRY_RELAY_PIN, command[6] == '1' ? HIGH : LOW);
+      digitalWrite(EXIT_RELAY_PIN, command[8] == '1' ? HIGH : LOW);
+      Serial.print("OK "); Serial.println(command);
     }
   } else if (strcmp(command, "ON") == 0) {
     if (armed) {
@@ -87,6 +117,10 @@ void handleCommand() {
 }
 
 void setup() {
+  // Set output latch LOW before enabling drivers, before peripheral initialization.
+  releaseDoors();
+  pinMode(ENTRY_RELAY_PIN, OUTPUT);
+  pinMode(EXIT_RELAY_PIN, OUTPUT);
   digitalWrite(MODULE1_PIN, LOW);
   pinMode(MODULE1_PIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
@@ -99,6 +133,7 @@ void setup() {
 }
 
 void loop() {
+  if (doorTestActive && (unsigned long)(millis() - doorTestStarted) >= 5000) releaseDoors();
   updatePanel(armed);
   updateRfid(armed && panelDiagnostic);
   stableBroken = panelStable[0];

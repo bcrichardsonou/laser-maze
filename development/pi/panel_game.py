@@ -19,11 +19,12 @@ def reader_reply(line):
     return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register","version_register"),values))
 
 
-VERSION = "bench-0.22.0"
+VERSION = "bench-0.23.0"
 
 
 class Controls:
-    def __init__(self, fast=False, reporting=None, rfid_entry=False):
+    def __init__(self, fast=False, reporting=None, rfid_entry=False, physical_single=False):
+        self.physical_single=physical_single
         self.rfid_entry = rfid_entry
         self.entry = Entry()
         self.reader_ready = False
@@ -35,6 +36,9 @@ class Controls:
         self.admission = 0 if fast else 5
         self.result_red_at = 0
         self.settings = Settings(beam_count=2, startup=2, duration=30, cooldown=2, warmup=1) if fast else Settings(beam_count=2)
+        if self.physical_single:
+            from dataclasses import replace
+            self.settings=replace(self.settings,enabled_beams=(True,False))
         self.levels = [False, False, False]
         self.usb_present=None;self.usb_armed=False
         self.mode = MODES[0]
@@ -47,7 +51,7 @@ class Controls:
     def configure(self, value):
         from operator_settings import validate_settings
         value=validate_settings(value)
-        self.settings=Settings(beam_count=2,enabled_beams=tuple(value['enabled_beams']),**{k:value[k] for k in ('duration','startup','cooldown','warmup','max_breaks')})
+        self.settings=Settings(beam_count=2,enabled_beams=(True,False) if self.physical_single else tuple(value['enabled_beams']),**{k:value[k] for k in ('duration','startup','cooldown','warmup','max_breaks')})
         self.allowed_modes=list(value['available_modes'])
         if self.mode not in self.allowed_modes:self.mode=self.allowed_modes[0]
 
@@ -134,6 +138,12 @@ class Controls:
                 self.result = (self.game.outcome, self.game.breaks)
                 self.result_red_at = now + (0 if self.fast else 10 if self.game.outcome == "win" else 5 if self.game.outcome in ("timeout", "beam_limit") else 0)
                 self.game = None
+
+    def doors(self):
+        # Exit releases on every terminal outcome. Entry remains locked at rest,
+        # opens only during admission; no door-closed feedback is fitted yet.
+        if not self.game:return (True,False)
+        return (self.game.state!='admitting',self.game.state in ('starting','admitting','running'))
 
     def display(self, now):
         if not self.game:
@@ -223,7 +233,7 @@ def main():
         parser.exit(1, "Stop other controller tests first.\n")
     from game_reporting import Reporting
     reporting = Reporting(Path.home() / "zoco-monitor/laser-maze", VERSION, args.fast)
-    controls = Controls(args.fast, reporting, rfid_entry=True)
+    controls = Controls(args.fast, reporting, rfid_entry=True, physical_single=True)
     from game_audio import Audio, GameSounds
     audio = Audio()
     effects = Audio()
@@ -257,7 +267,7 @@ def main():
         send=status_frames.send
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.22.0")
+            initial("HELLO", "HELLO 1 bench-0.23.0")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
@@ -277,13 +287,14 @@ def main():
             pending = bytearray()
             next_hb = next_poll = next_light = next_rfid = 0
             previous = None
+            previous_doors = None
             staff_keys=StaffKeys(maintenance,controls)
             shown = None
             print("RFID + code: 77004# keys | 40077# keys accessible | 16646# Black Hat/Vexed | 64661# accessible. Five-second entry windows; * clears; hold 0 for ten seconds to stop and return to idle.", flush=True)
             print("Valid RFID + code starts preparation, then five-second admission before countdown. Reader: " + ("ready" if controls.reader_ready else "missing — wire RC522 before starting"), flush=True)
             print("Portal maintenance requires local 5 confirmation. 5 renews test enable; * cancels tests/sound; hold 0 for ten seconds to exit maintenance and stop gameplay.",flush=True)
             print("USB objective: fresh storage insertion at the configured Pi socket during RUNNING; remove any preinserted drive first. Mega D4 is unused. Keys objective: 1,3,2,4.", flush=True)
-            print("Beam 1 input = calibrated TEMT6000 A0; Mega D9 = Nano module 1 / beam 1; built-in LED = beam 1; D5 = beam 2; RGB = combined status.", flush=True)
+            print("A0 is the only fitted receiver; D2/D3/D4 retired. D22 entry / D23 exit active-high relay commands. D9 Nano module; D6 status light.", flush=True)
             print(f"Timing preparation/game/cooldown/warmup: {controls.settings.startup}/{controls.settings.duration}/{controls.settings.cooldown}/{controls.settings.warmup} seconds; break limit {controls.settings.max_breaks}", flush=True)
             while True:
                 now = time.monotonic()
@@ -333,6 +344,14 @@ def main():
                 sounds.update(controls, now)
                 maintenance.tick(controls,now,serial_idle=not replies and not status_frames.deferred,previous=previous)
                 if maintenance.enabled or maintenance.pending:controls.entry.reset("maintenance")
+                door_testing=maintenance.test and maintenance.test['kind']=='door'
+                door_state=(False,False) if maintenance.enabled or maintenance.pending else controls.doors()
+                if not door_testing and door_state!=previous_doors:
+                    text='DOORS %d %d'%door_state
+                    def door_ack(state=door_state):maintenance.door_commanded=state;maintenance.next_live=0
+                    send(text,'OK '+text,door_ack)
+                    previous_doors=door_state
+                if door_testing:previous_doors=None
                 desired = maintenance.display() if maintenance.enabled or maintenance.pending else controls.display(now)
                 hold_countdown=staff_keys.countdown(now)
                 if hold_countdown is not None:desired=(desired[0],desired[1],hold_countdown,desired[3])

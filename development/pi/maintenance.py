@@ -12,7 +12,7 @@ from game_reporting import atomic_json
 
 ID = re.compile(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\Z')
 COLORS = ('RED','GREEN','BLUE','YELLOW','PURPLE','OFF')
-ACTIONS = ('enter_maintenance','leave_maintenance','stop_game','snapshot','audio_play','stop_audio','audio_mute','rgb_test','display_test','restart_game','rfid_start','rfid_end','rfid_reset','keypad_start','keypad_end','beams_check','receiver_auto','receiver_capture','receiver_apply','receiver_thresholds','module_test','laser_align','game_settings','start_lock','audio_volume','audio_output_test','service_start','service_stop','reboot_pi','software_reinstall')
+ACTIONS = ('enter_maintenance','leave_maintenance','stop_game','snapshot','audio_play','stop_audio','audio_mute','rgb_test','display_test','restart_game','rfid_start','rfid_end','rfid_reset','keypad_start','keypad_end','beams_check','receiver_auto','receiver_capture','receiver_apply','receiver_thresholds','module_test','laser_align','game_settings','start_lock','audio_volume','audio_output_test','service_start','service_stop','reboot_pi','software_reinstall','door_test','doors_release')
 
 
 def validate(command, identity, wall):
@@ -26,6 +26,8 @@ def validate(command, identity, wall):
     if not isinstance(p,dict): raise ValueError('invalid_parameters')
     if action=='audio_play':
         if set(p)!= {'clip'} or p['clip'] not in MEDIA: raise ValueError('invalid_clip')
+    elif action=='door_test':
+        if set(p)!={'door'} or p['door'] not in ('entry','exit'):raise ValueError('invalid_door')
     elif action=='audio_mute':
         if set(p)!= {'muted'} or type(p['muted']) is not bool: raise ValueError('invalid_parameters')
     elif action=='rgb_test':
@@ -52,6 +54,7 @@ class Maintenance:
         self.send=None;self.raw=None;self.raw_at=-100;self.last_key='none';self.last_key_at=0;self.connected=False
         self.thresholds=dict(break_below=20,clear_above=41);self.capture_values={};self.candidate=None;self.next_live=0
         self.beam_check=None;self.keypad_session=None;self.rfid_session=None
+        self.door_commanded=None
         self.volume=100;self.play_locked=False;self.saved_settings=None
         receiver_file=self.folder/'receiver-settings.json'
         if receiver_file.exists():self.thresholds=validate_thresholds(json.loads(receiver_file.read_text())['thresholds'])
@@ -98,8 +101,9 @@ class Maintenance:
             rfid=dict(diagnostics=controls.reader_diagnostics,ready=controls.reader_ready,scans_this_run=controls.scan_count,seconds_since_scan=round(now-controls.last_scan_at,1) if controls.last_scan_at is not None else None,entry=controls.entry.status(now)),
             settings=settings,inputs=list(controls.levels),last_key=self.last_key,last_key_at=int(self.last_key_at),
             audio=dict(volume=self.volume,muted=self.audio.muted,backend=str(self.audio.backend or 'unavailable'),output_device=self.audio.environment.get('ZOCO_AUDIO_TARGET','configured default') if hasattr(self.audio,'environment') else 'configured default'),
-            capabilities=dict(module_count=1,module_pixels=16,status_pixels=42,status_rows=14,ring_customization=False,laser_switching=True,powered_calibration=True,automatic_calibration=True,all_beams_check=True,keypad_layout='storm_12',staff_key_controls=True,usb_objective=True,isolated_keypad_test=True,rfid_test=True,rfid_reinitialize=True,rfid=True,hazer=False,door=False),
+            capabilities=dict(module_count=1,module_pixels=16,status_pixels=42,status_rows=14,ring_customization=False,laser_switching=True,powered_calibration=True,automatic_calibration=True,all_beams_check=True,keypad_layout='storm_12',staff_key_controls=True,usb_objective=True,isolated_keypad_test=True,rfid_test=True,rfid_reinitialize=True,rfid=True,hazer=False,door=True),
             firmware_version=getattr(self,'version','unconfirmed'),python_version=getattr(self,'version','unconfirmed'),serial_port=getattr(self,'serial_port','unconfirmed'),
+            doors=dict(entry_pin=22,exit_pin=23,commanded=list(self.door_commanded) if self.door_commanded is not None else None,position_sensors=False),
             usb_input=getattr(self,'usb_input',None),rfid_test=self.rfid_snapshot(controls),keypad_test=self.keypad_session,staff_hold_seconds=getattr(self,'staff_hold_seconds',0),laser_command_on=self.display()[0],laser_seconds_remaining=max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('alignment','module','capture','auto','beams') else 0,
             test=self.test['kind'] if self.test else ('keypad' if self.keypad_active() else 'rfid' if self.rfid_active() else 'none'),capture_samples=len(self.test['values']) if self.test and self.test['kind'] in ('capture','auto','beams') else 0,
             beam_check=self.beam_check,beam_check_step=self.test['phase'] if self.test and self.test['kind']=='beams' else 'none',
@@ -279,6 +283,14 @@ class Maintenance:
         if self.test:
             test=self.test
             if test['command']['expires_at']<=wall or not self.local_enabled():self.cancel_test(controls,'local_enable_expired')
+            elif test['kind']=='door':
+                if now>=test['until'] and not test.get('releasing'):
+                    test['releasing']=True
+                    def released(command=test['command']):
+                        self.door_commanded=(False,False)
+                        if self.test and self.test['command']['id']==command['id']:
+                            self.test=None;self.complete(command,'completed','relay_test_finished_physical_lock_unconfirmed',controls)
+                    self.send('DOORS 0 0','OK DOORS 0 0',released)
             elif test['kind']=='beams':self.beams_tick(controls,now,serial_idle,previous)
             elif test['kind']=='auto':self.automatic_tick(controls,now,serial_idle,previous)
             elif test['kind']=='capture':
@@ -319,13 +331,22 @@ class Maintenance:
                 self.complete(dict(id=path.stem),'failed','invalid_or_expired_command',controls);continue
             if (self.folder/'results'/(path.stem+'.json')).exists():path.unlink(missing_ok=True);continue
             commands.append(command)
-        commands.sort(key=lambda c:0 if c['action'] in ('stop_game','stop_audio') else 1)
+        commands.sort(key=lambda c:0 if c['action'] in ('stop_game','stop_audio','doors_release') else 1)
         for command in commands:
             if (self.folder/'results'/(command['id']+'.json')).exists():continue
             action,params=validate(command,self.identity,wall)
             if self.pending and command['id']==self.pending['id']:continue
             if self.test and command['id']==self.test['command']['id']:continue
-            if action=='stop_game':
+            if action=='doors_release':
+                if controls.game:controls.game.finish('stopped');controls.tick(now)
+                controls.result=None;self.cancel_test(controls)
+                # Stay in maintenance so normal idle entry locking cannot reassert.
+                if self.pending:self.complete(self.pending,'failed','cancelled',controls);self.pending=None
+                self.enabled=True;self.save()
+                self.complete(command,'completed','door_release_requested',controls)
+                for other in commands:
+                    if other['action'] not in ('doors_release','stop_game','stop_audio','snapshot','leave_maintenance') and not (self.folder/'results'/(other['id']+'.json')).exists():self.complete(other,'failed','cancelled_by_stop',controls)
+            elif action=='stop_game':
                 if controls.game:controls.game.finish('stopped');controls.tick(now)
                 self.cancel_test(controls)
                 if self.pending:self.complete(self.pending,'failed','cancelled',controls);self.pending=None
@@ -358,6 +379,14 @@ class Maintenance:
             elif not self.local_enabled():self.complete(command,'failed','press_5_in_maintenance_first',controls)
             elif action=='rfid_reset' and not self.keypad_active():self.reset_rfid(command,controls,now)
             elif self.test or self.keypad_active() or self.rfid_active():self.complete(command,'failed','test_busy',controls)
+            elif action=='door_test':
+                if not self.send:self.complete(command,'failed','serial_not_ready',controls);continue
+                self.test=dict(kind='door',command=command,until=now+5,door=params['door'])
+                text='DOORTEST '+('0' if params['door']=='entry' else '1')
+                def locked(door=params['door'],command=command):
+                    if self.test and self.test['command']['id']==command['id']:
+                        self.door_commanded=(door=='entry',door=='exit');self.next_live=0
+                self.send(text,'OK '+text,locked)
             elif action=='rfid_start':
                 self.stop_audio();controls.entry.reset('maintenance')
                 self.rfid_session=dict(id=command['id'],status='running',started_at=int(wall),ends_at=int(wall)+120,scans=0,last_scan_at=None,responses_at_start=controls.reader_diagnostics.get('tag_responses',0),failures_at_start=controls.reader_diagnostics.get('selection_failures',0))
