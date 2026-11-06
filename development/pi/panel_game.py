@@ -9,6 +9,7 @@ from pathlib import Path
 import time
 from game_engine import Game, Settings, MODES
 from entry_authorization import Entry
+from usb_objective import USBObjective
 
 def reader_reply(line):
     words=line.split()
@@ -18,7 +19,7 @@ def reader_reply(line):
     return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register","version_register"),values))
 
 
-VERSION = "bench-0.21.1"
+VERSION = "bench-0.22.0"
 
 
 class Controls:
@@ -35,6 +36,7 @@ class Controls:
         self.result_red_at = 0
         self.settings = Settings(beam_count=2, startup=2, duration=30, cooldown=2, warmup=1) if fast else Settings(beam_count=2)
         self.levels = [False, False, False]
+        self.usb_present=None;self.usb_armed=False
         self.mode = MODES[0]
         self.game = None
         self.result = None
@@ -50,12 +52,21 @@ class Controls:
         if self.mode not in self.allowed_modes:self.mode=self.allowed_modes[0]
 
     def inputs(self, levels, now):
-        rising = levels[2] and not self.levels[2]
-        self.levels = list(levels)
+        self.levels = [*levels[:2],self.usb_present is True]
         if self.game:
             self.game.broken = list(levels[:2])
             self.game.tick(now)
-            if rising: self.game.objective_usb(now)
+
+
+    def usb_update(self,present,now,allow_objective=True):
+        self.tick(now)
+        previous=self.usb_present;self.usb_present=present;self.levels[2]=present is True
+        if not allow_objective or not self.game or self.game.state!='running' or not self.mode.startswith('usb'):
+            self.usb_armed=False
+        elif present is False:self.usb_armed=True
+        elif present is None:self.usb_armed=False
+        elif previous is False and self.usb_armed:
+            self.game.objective_usb(now);self.usb_armed=False
 
     def entry_idle(self, now):
         return not self.game and not self.play_locked and not (self.result and now < self.result_red_at)
@@ -64,6 +75,7 @@ class Controls:
         if not self.entry_idle(now):
             self.entry.reset('entry_locked')
             return
+        self.usb_armed=False
         self.game = Game(self.mode, self.settings, powered_startup=True, admission=self.admission)
         self.game.broken = list(self.levels[:2])
         self.game.start(now)
@@ -222,6 +234,7 @@ def main():
     except (OSError,ValueError,KeyError):identity=''
     maintenance=Maintenance(Path.home()/'zoco-monitor/laser-maze/control',identity,audio,effects)
     maintenance.configure_controls(controls)
+    usb_input=USBObjective(maintenance.folder/'usb-port.json')
     def audio_metrics():
         return dict(audio.metrics(), audio_effects_error=effects.error or 'none',
             audio_effect_last_cue_requested=effects.last_cue)
@@ -244,7 +257,7 @@ def main():
         send=status_frames.send
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.21.1")
+            initial("HELLO", "HELLO 1 bench-0.22.0")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
@@ -269,7 +282,7 @@ def main():
             print("RFID + code: 77004# keys | 40077# keys accessible | 16646# Black Hat/Vexed | 64661# accessible. Five-second entry windows; * clears; hold 0 for ten seconds to stop and return to idle.", flush=True)
             print("Valid RFID + code starts preparation, then five-second admission before countdown. Reader: " + ("ready" if controls.reader_ready else "missing — wire RC522 before starting"), flush=True)
             print("Portal maintenance requires local 5 confirmation. 5 renews test enable; * cancels tests/sound; hold 0 for ten seconds to exit maintenance and stop gameplay.",flush=True)
-            print("Latch requires a fresh OFF→ON during RUNNING. Keys objective: 1,3,2,4.", flush=True)
+            print("USB objective: fresh storage insertion at the configured Pi socket during RUNNING; remove any preinserted drive first. Mega D4 is unused. Keys objective: 1,3,2,4.", flush=True)
             print("Beam 1 input = calibrated TEMT6000 A0; Mega D9 = Nano module 1 / beam 1; built-in LED = beam 1; D5 = beam 2; RGB = combined status.", flush=True)
             print(f"Timing preparation/game/cooldown/warmup: {controls.settings.startup}/{controls.settings.duration}/{controls.settings.cooldown}/{controls.settings.warmup} seconds; break limit {controls.settings.max_breaks}", flush=True)
             while True:
@@ -312,6 +325,9 @@ def main():
                         if reply[2]:reply[2]()
                     elif line: raise RuntimeError(f"Controller fault: {line}")
                 if replies and now > replies[0][1]: raise RuntimeError("Controller acknowledgment timed out")
+                if usb_input.poll(now):
+                    controls.usb_update(usb_input.present,now,allow_objective=not (maintenance.enabled or maintenance.pending))
+                    maintenance.usb_input=usb_input.status()
                 staff_keys.tick(now)
                 controls.tick(now)
                 sounds.update(controls, now)
