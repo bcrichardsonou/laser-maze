@@ -19,7 +19,7 @@ def reader_reply(line):
     return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register","version_register"),values))
 
 
-VERSION = "bench-0.23.1"
+VERSION = "bench-0.23.2"
 
 
 class Controls:
@@ -137,13 +137,13 @@ class Controls:
                 if self.reporting: self.reporting.finish(self.game, now)
                 self.last_enabled = list(self.game.enabled)
                 self.result = (self.game.outcome, self.game.breaks)
-                self.exit_release_until = now + (0 if self.fast else 30)
+                self.exit_release_until = now + (0 if self.fast else 10)
                 self.result_red_at = self.exit_release_until
                 self.game = None
 
     def doors(self, now):
         # Locked rest; authorization gates admission. Exit release is monotonic
-        # and blocks the next game for its entire 30-second window.
+        # and blocks the next game for its entire 10-second window.
         if not self.game:return (True,now >= self.exit_release_until)
         return (self.game.state!='admitting',self.game.state in ('starting','admitting','running'))
 
@@ -269,7 +269,7 @@ def main():
         send=status_frames.send
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.23.1")
+            initial("HELLO", "HELLO 1 bench-0.23.2")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
