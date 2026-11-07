@@ -13,7 +13,7 @@ void releaseDoors() {
   digitalWrite(ENTRY_RELAY_PIN, LOW);
   digitalWrite(EXIT_RELAY_PIN, LOW);
 }
-const char VERSION[] = "bench-0.25.0";
+const char VERSION[] = "bench-0.26.0";
 bool stableBroken = false;
 char command[32];
 unsigned int used = 0;
@@ -101,6 +101,11 @@ void handleCommand() {
       Serial.print("OK CAL ");Serial.print(receiverBreakThreshold);
       Serial.print(' ');Serial.println(receiverClearThreshold);
     }
+  } else if (strcmp(command, "LEVEL") == 0) {
+    analogRead(A1); // Discard first sample after switching ADC channels.
+    unsigned int level = analogRead(A1);
+    analogRead(A0); // Restore receiver channel before normal beam polling.
+    Serial.print("LEVEL A1 "); Serial.println(level);
   } else if (strcmp(command, "LIGHT") == 0) {
     Serial.print("LIGHT A0 ");
     Serial.println(analogRead(A0)); // Read only; allowed while disarmed.
@@ -125,6 +130,8 @@ void setup() {
   pinMode(MODULE1_PIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
   pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(A1, INPUT);
+  digitalWrite(A1, LOW); // External divider supplies the signal; internal pull-up stays off.
   panelBegin();
   rfidBegin();
   stableBroken = panelStable[0];

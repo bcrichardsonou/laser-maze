@@ -21,7 +21,7 @@ def reader_reply(line):
     return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register","version_register"),values))
 
 
-VERSION = "bench-0.25.0"
+VERSION = "bench-0.26.0"
 
 
 class Controls:
@@ -286,7 +286,7 @@ def main():
         send=status_frames.send
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.25.0")
+            initial("HELLO", "HELLO 1 bench-0.26.0")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
@@ -301,7 +301,7 @@ def main():
             maintenance.connected=True;maintenance.version=VERSION;maintenance.serial_port=args.port;maintenance.send=send
             port.timeout = 0.03
             pending = bytearray()
-            next_hb = next_poll = next_light = 0
+            next_hb = next_poll = next_light = next_level = 0
             previous = None
             previous_doors = None
             staff_keys=StaffKeys(maintenance,controls)
@@ -320,7 +320,11 @@ def main():
                     raw, _, pending = pending.partition(b"\n")
                     line = raw.decode("ascii", errors="replace").strip()
                     words = line.split()
-                    if line.startswith("LIGHT A0 "):
+                    if line.startswith("LEVEL A1 "):
+                        value=line.removeprefix("LEVEL A1 ")
+                        if not value.isdigit() or not 0<=int(value)<=1023 or not replies or replies[0][0]!="LEVEL A1":raise RuntimeError("Invalid tank sender response")
+                        replies.popleft();maintenance.receive_level(int(value),now)
+                    elif line.startswith("LIGHT A0 "):
                         value=line.removeprefix("LIGHT A0 ")
                         if not value.isdigit() or not 0<=int(value)<=1023 or not replies or replies[0][0]!="LIGHT A0":raise RuntimeError("Invalid light response")
                         replies.popleft();maintenance.receive_light(int(value),now)
@@ -381,6 +385,8 @@ def main():
                 if now>=next_light:
                     send("LIGHT","LIGHT A0")
                     next_light=now+(.04 if maintenance.test and maintenance.test['kind'] in ('capture','auto','beams') else .2)
+                if now>=next_level and not replies and not status_frames.deferred and not status_frames.waiting:
+                    send("LEVEL","LEVEL A1");next_level=now+(.1 if maintenance.test and maintenance.test['kind']=='tank' else .5)
                 hazer.update(controls,maintenance,now)
                 maintenance.publish(controls,now)
                 status_frames.tick(now)
