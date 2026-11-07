@@ -10,6 +10,7 @@ import time
 from game_engine import Game, Settings, MODES
 from entry_authorization import Entry
 from usb_objective import USBObjective
+from usb_rfid import USBRFID
 
 def reader_reply(line):
     words=line.split()
@@ -19,7 +20,7 @@ def reader_reply(line):
     return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register","version_register"),values))
 
 
-VERSION = "bench-0.23.2"
+VERSION = "bench-0.24.0"
 
 
 class Controls:
@@ -162,6 +163,17 @@ class Controls:
 
 
 
+def update_usb_reader(reader,controls,maintenance,now):
+    scans=reader.poll(now)
+    controls.reader_ready=reader.ready
+    controls.reader_diagnostics=reader.diagnostics()
+    if not reader.ready:controls.entry.reset('reader_unavailable');return
+    for _ in range(scans):
+        if maintenance.enabled or maintenance.pending:
+            controls.entry.reset('maintenance');controls.last_scan_at=now
+            controls.scan_count+=1;maintenance.rfid_scan();maintenance.next_live=0
+        else:controls.swipe(now)
+
 class StatusFrames:
     """Send LED frames with an empty serial pipeline; defer writes until ACK."""
     def __init__(self,port,replies,clock=time.monotonic):
@@ -247,6 +259,7 @@ def main():
     maintenance=Maintenance(Path.home()/'zoco-monitor/laser-maze/control',identity,audio,effects)
     maintenance.configure_controls(controls)
     usb_input=USBObjective(maintenance.folder/'usb-port.json')
+    usb_reader=USBRFID();controls.usb_reader=usb_reader
     def audio_metrics():
         return dict(audio.metrics(), audio_effects_error=effects.error or 'none',
             audio_effect_last_cue_requested=effects.last_cue)
@@ -269,7 +282,7 @@ def main():
         send=status_frames.send
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.23.2")
+            initial("HELLO", "HELLO 1 bench-0.24.0")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
@@ -278,22 +291,19 @@ def main():
             if len(row) != 4 or row[0] != "INPUTS" or any(v not in ("0", "1") for v in row[1:]):
                 raise RuntimeError("Invalid initial inputs")
             controls.inputs([v == "1" for v in row[1:]], time.monotonic())
-            port.write(b"RFID\n"); port.flush()
-            reader = port.readline().decode("ascii", errors="replace").strip()
-            controls.reader_ready,controls.reader_diagnostics = reader_reply(reader)
             initial("ARM", "OK ARM")
             initial("CONTROL", "OK CONTROL")
             connected = True
             maintenance.connected=True;maintenance.version=VERSION;maintenance.serial_port=args.port;maintenance.send=send
             port.timeout = 0.03
             pending = bytearray()
-            next_hb = next_poll = next_light = next_rfid = 0
+            next_hb = next_poll = next_light = 0
             previous = None
             previous_doors = None
             staff_keys=StaffKeys(maintenance,controls)
             shown = None
             print("RFID + code: 77004# keys | 40077# keys accessible | 16646# Black Hat/Vexed | 64661# accessible. Five-second entry windows; * clears; hold 0 for ten seconds to stop and return to idle.", flush=True)
-            print("Valid RFID + code starts preparation, then five-second admission before countdown. Reader: " + ("ready" if controls.reader_ready else "missing — wire RC522 before starting"), flush=True)
+            print("Valid RFID + code starts preparation, then five-second admission before countdown. Reader: " + ("ready" if controls.reader_ready else "starting — USB ACR1552U is checked automatically"), flush=True)
             print("Portal maintenance requires local 5 confirmation. 5 renews test enable; * cancels tests/sound; hold 0 for ten seconds to exit maintenance and stop gameplay.",flush=True)
             print("USB objective: fresh storage insertion at the configured Pi socket during RUNNING; remove any preinserted drive first. Mega D4 is unused. Keys objective: 1,3,2,4.", flush=True)
             print("A0 is the only fitted receiver; D2/D3/D4 retired. D22 entry / D23 exit active-high relay commands. D9 Nano module; D6 status light.", flush=True)
@@ -319,10 +329,7 @@ def main():
                         values = controls.levels.copy(); values[int(words[1])] = words[2] == "1"
                         controls.inputs(values, now)
                     elif line == "RFID TAG":
-                        if maintenance.enabled or maintenance.pending:
-                            controls.entry.reset('maintenance')
-                            controls.last_scan_at=now;controls.scan_count+=1;maintenance.rfid_scan()
-                        else:controls.swipe(now)
+                        pass # Retired Mega RC522 is never an authorization source.
                     elif line.startswith(("RFID READY ", "RFID MISSING ")):
                         if not replies or replies[0][0]!="RFID STATUS":raise RuntimeError("Unexpected RFID health reply")
                         reply=replies.popleft();controls.reader_ready,controls.reader_diagnostics=reader_reply(line)
@@ -341,6 +348,7 @@ def main():
                 if usb_input.poll(now):
                     controls.usb_update(usb_input.present,now,allow_objective=not (maintenance.enabled or maintenance.pending))
                     maintenance.usb_input=usb_input.status()
+                update_usb_reader(usb_reader,controls,maintenance,now)
                 staff_keys.tick(now)
                 controls.tick(now)
                 sounds.update(controls, now)
@@ -369,8 +377,6 @@ def main():
                 if now>=next_light:
                     send("LIGHT","LIGHT A0")
                     next_light=now+(.04 if maintenance.test and maintenance.test['kind'] in ('capture','auto','beams') else .2)
-                if now>=next_rfid:
-                    send("RFID","RFID STATUS");next_rfid=now+2
                 maintenance.publish(controls,now)
                 status_frames.tick(now)
                 g = controls.game
@@ -390,6 +396,7 @@ def main():
         finally:
             try: port.write(b"OFF\n"); port.flush()
             except (OSError, serial.SerialException): pass
+            usb_reader.close()
             audio.close()
             effects.close()
             if controls.game:

@@ -206,6 +206,12 @@ class Maintenance:
             self.rfid_session.update(status='ended',reason=reason,ended_at=int(self.wall()));self.next_live=0
 
     def reset_rfid(self,command,controls,now):
+        if getattr(controls,'usb_reader',None) is not None:
+            if self.test:self.complete(command,'failed','test_busy',controls);return
+            controls.reader_ready=False;controls.entry.reset('reader_unavailable')
+            controls.usb_reader.restart(now)
+            self.test=dict(kind='usb_rfid_reset',command=command,until=now+6)
+            return
         if self.test or not self.send:self.complete(command,'failed','serial_not_ready_or_test_busy',controls);return
         self.test=dict(kind='rfid_reset',command=command,until=now+3)
         def acknowledged():
@@ -304,6 +310,10 @@ class Maintenance:
                     atomic_json(self.folder.parent/'calibration'/('portal-'+test['command']['id']+'.json'),dict(phase=phase,readings=test['values'],captured_at=int(wall),candidate=self.candidate,applied_to_game=False))
                     self.test=None;self.complete(test['command'],'completed','receiver_sample_captured',controls)
                 elif now>test['until']:self.cancel_test(controls,'receiver_sample_timeout')
+            elif test['kind']=='usb_rfid_reset':
+                if controls.reader_ready:
+                    self.test=None;self.complete(test['command'],'completed','usb_reader_reconnected',controls)
+                elif now>test['until']:self.cancel_test(controls,'usb_reader_still_missing_check_usb_and_pcsc')
             elif test['kind']=='rfid_reset':
                 if now>test['until']:self.cancel_test(controls,'rfid_reinitialize_unconfirmed')
             elif test['kind']=='apply':
