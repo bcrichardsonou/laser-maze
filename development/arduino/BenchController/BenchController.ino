@@ -13,7 +13,7 @@ void releaseDoors() {
   digitalWrite(ENTRY_RELAY_PIN, LOW);
   digitalWrite(EXIT_RELAY_PIN, LOW);
 }
-const char VERSION[] = "bench-0.26.0";
+const char VERSION[] = "bench-0.26.1";
 bool stableBroken = false;
 char command[32];
 unsigned int used = 0;
@@ -101,6 +101,9 @@ void handleCommand() {
       Serial.print("OK CAL ");Serial.print(receiverBreakThreshold);
       Serial.print(' ');Serial.println(receiverClearThreshold);
     }
+  } else if (strcmp(command, "OUTPUT") == 0) {
+    Serial.print("OUTPUT ");Serial.print(armed ? 1 : 0);Serial.print(' ');
+    Serial.print(ledOn ? 1 : 0);Serial.print(' ');Serial.println(digitalRead(MODULE1_PIN) == HIGH ? 1 : 0);
   } else if (strcmp(command, "LEVEL") == 0) {
     analogRead(A1); // Discard first sample after switching ADC channels.
     unsigned int level = analogRead(A1);

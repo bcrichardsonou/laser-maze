@@ -64,6 +64,8 @@ class Maintenance:
         self.thresholds=dict(break_below=20,clear_above=41);self.capture_values={};self.candidate=None;self.next_live=0
         self.beam_check=None;self.keypad_session=None;self.rfid_session=None
         self.tank=TankLevel(self.folder/"tank-level.json")
+        self.output=dict(requested_on=None,acknowledged_on=None,firmware_on=None,pin_high=None,checked_at=0)
+        self.output_at=-100;self.output_ack_at=-100;self.now=0
         self.door_commanded=None
         self.volume=100;self.play_locked=False;self.saved_settings=None
         receiver_file=self.folder/'receiver-settings.json'
@@ -97,6 +99,46 @@ class Maintenance:
         controls.play_locked=self.play_locked
         if self.saved_settings:controls.configure(self.saved_settings)
 
+    def output_requested(self,on,now):
+        self.output['requested_on']=on;self.next_live=0
+        print('MODULE REQUEST '+('HIGH' if on else 'LOW')+' source='+('maintenance' if self.enabled or self.pending else 'game'),flush=True)
+
+    def output_acknowledged(self,on,now):
+        self.output['acknowledged_on']=on;self.output_ack_at=now;self.next_live=0
+        print('MODULE ACK '+('HIGH' if on else 'LOW'),flush=True)
+        if self.test and self.test['kind'] in ('alignment','module') and self.test['phase']=='starting' and on:
+            self.test.update(phase='held',until=now+self.test['duration'])
+
+    def receive_output(self,armed,on,pin,now):
+        changed=(self.output['firmware_on'],self.output['pin_high'])!=(on,pin)
+        self.output.update(firmware_on=on,pin_high=pin,checked_at=int(self.wall()));self.output_at=now
+        if changed:print('MODULE READBACK armed=%s requested=%s D9=%s'%(armed,on,'HIGH' if pin else 'LOW'),flush=True)
+        if not self.test or self.test['kind'] not in ('alignment','module'):return
+        t=self.test
+        if t['phase']=='baseline' and self.output['acknowledged_on'] is False and now>=self.output_ack_at:
+            if armed and not on and not pin:
+                if t.get('low_since') is None:t['low_since']=now
+                elif now-t['low_since']>=.15:t.update(phase='starting',until=now+3)
+            else:t['low_since']=None
+        elif t['phase']=='held':
+            if armed and on and pin:t['verified_high']=True
+            else:t['mismatch']=True
+        elif t['phase']=='stopping' and self.output['acknowledged_on'] is False and now>=self.output_ack_at:
+            t['verified_low']=armed and not on and not pin
+        self.next_live=0
+
+    def output_snapshot(self,now):
+        p=dict(self.output)
+        if now-self.output_at>=1.5:p.update(firmware_on=None,pin_high=None)
+        p['phase']=self.test.get('phase','') if self.test and self.test['kind'] in ('alignment','module') else 'idle'
+        return p
+
+    def begin_module_test(self,command,now,duration):
+        if not self.send:self.complete(command,'failed','serial_not_ready',self.controls);return
+        self.test=dict(kind='alignment' if duration==30 else 'module',command=command,phase='baseline',duration=duration,until=now+4,verified_high=False,verified_low=False)
+        self.output_requested(False,now)
+        self.send('PAUSE','OK PAUSE',lambda:self.output_acknowledged(False,self.now))
+
     def receive_level(self,value,now):
         self.tank.receive(value,now)
         if self.test and self.test['kind']=='tank' and len(self.test['values'])<20:self.test['values'].append(value)
@@ -115,13 +157,14 @@ class Maintenance:
             rfid=dict(diagnostics=controls.reader_diagnostics,ready=controls.reader_ready,scans_this_run=controls.scan_count,seconds_since_scan=round(now-controls.last_scan_at,1) if controls.last_scan_at is not None else None,entry=controls.entry.status(now)),
             settings=settings,inputs=list(controls.levels),last_key=self.last_key,last_key_at=int(self.last_key_at),
             audio=dict(volume=self.volume,muted=self.audio.muted,backend=str(self.audio.backend or 'unavailable'),output_device=self.audio.environment.get('ZOCO_AUDIO_TARGET','configured default') if hasattr(self.audio,'environment') else 'configured default'),
-            capabilities=dict(module_count=1,module_pixels=16,status_pixels=42,status_rows=14,ring_customization=False,laser_switching=True,powered_calibration=True,automatic_calibration=True,all_beams_check=True,keypad_layout='storm_12',staff_key_controls=True,usb_objective=True,isolated_keypad_test=True,rfid_test=True,rfid_reinitialize=True,rfid=True,tank_level=True,hazer=getattr(controls,'hazer',None) is not None and controls.hazer.configured,door=True),
+            capabilities=dict(module_count=1,module_pixels=16,status_pixels=42,status_rows=14,ring_customization=False,module_output_readback=True,laser_switching=True,powered_calibration=True,automatic_calibration=True,all_beams_check=True,keypad_layout='storm_12',staff_key_controls=True,usb_objective=True,isolated_keypad_test=True,rfid_test=True,rfid_reinitialize=True,rfid=True,tank_level=True,hazer=getattr(controls,'hazer',None) is not None and controls.hazer.configured,door=True),
             firmware_version=getattr(self,'version','unconfirmed'),python_version=getattr(self,'version','unconfirmed'),serial_port=getattr(self,'serial_port','unconfirmed'),
+            module_output=self.output_snapshot(now),
             tank_level=self.tank.status(now),
             hazer_test_seconds=max(0,int(self.test['until']-now+0.999)) if self.test and self.test['kind']=='hazer' else 0,
             hazer_dmx=controls.hazer.status() if getattr(controls,'hazer',None) is not None else None,
             doors=dict(entry_pin=22,exit_pin=23,commanded=list(self.door_commanded) if self.door_commanded is not None else None,position_sensors=False,exit_release_seconds=max(0,int(controls.exit_release_until-now+0.999))),
-            usb_input=getattr(self,'usb_input',None),rfid_test=self.rfid_snapshot(controls),keypad_test=self.keypad_session,staff_hold_seconds=getattr(self,'staff_hold_seconds',0),laser_command_on=self.display()[0],laser_seconds_remaining=max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('alignment','module','capture','auto','beams') else 0,
+            usb_input=getattr(self,'usb_input',None),rfid_test=self.rfid_snapshot(controls),keypad_test=self.keypad_session,staff_hold_seconds=getattr(self,'staff_hold_seconds',0),laser_command_on=(self.display() if self.enabled or self.pending else controls.display(now))[0],laser_seconds_remaining=max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('alignment','module','capture','auto','beams') else 0,
             test=self.test['kind'] if self.test else ('keypad' if self.keypad_active() else 'rfid' if self.rfid_active() else 'none'),capture_samples=len(self.test['values']) if self.test and self.test['kind'] in ('capture','auto','beams') else 0,
             beam_check=self.beam_check,beam_check_step=self.test['phase'] if self.test and self.test['kind']=='beams' else 'none',
             calibration_step=self.test['phase'] if self.test and self.test['kind']=='auto' else ('saving' if self.test and self.test['kind']=='apply' else 'none'))
@@ -199,7 +242,7 @@ class Maintenance:
         self.next_live=0
         path=self.folder/'results'/(command['id']+'.json')
         if not path.exists():atomic_json(path,dict(id=command['id'],device_id=self.identity,status=status,reason=reason,
-            executed_at=int(self.wall()),snapshot=dict(self.metrics(),inputs=list(controls.levels),game_running=controls.game is not None,rfid=dict(diagnostics=controls.reader_diagnostics,ready=controls.reader_ready,scans_this_run=controls.scan_count,entry_state=controls.entry.reason),receiver=dict(raw=self.raw,thresholds=self.thresholds,captures={k:summarize(v) for k,v in self.capture_values.items()},candidate=self.candidate),play_locked=self.play_locked,volume=self.volume,beam_check=self.beam_check,keypad_test=self.keypad_session if command.get('action') in ('keypad_start','keypad_end') else None,rfid_test=self.rfid_snapshot(controls) if command.get('action') in ('rfid_start','rfid_end','rfid_reset') else None)))
+            executed_at=int(self.wall()),snapshot=dict(self.metrics(),module_output=self.output_snapshot(time.monotonic()) if command.get('action') in ('module_test','laser_align') else None,inputs=list(controls.levels),game_running=controls.game is not None,rfid=dict(diagnostics=controls.reader_diagnostics,ready=controls.reader_ready,scans_this_run=controls.scan_count,entry_state=controls.entry.reason),receiver=dict(raw=self.raw,thresholds=self.thresholds,captures={k:summarize(v) for k,v in self.capture_values.items()},candidate=self.candidate),play_locked=self.play_locked,volume=self.volume,beam_check=self.beam_check,keypad_test=self.keypad_session if command.get('action') in ('keypad_start','keypad_end') else None,rfid_test=self.rfid_snapshot(controls) if command.get('action') in ('rfid_start','rfid_end','rfid_reset') else None)))
         atomic_json(self.folder/'outbox'/path.name,json.loads(path.read_text()))
         (self.folder/'inbox'/(command['id']+'.json')).unlink(missing_ok=True)
 
@@ -289,11 +332,13 @@ class Maintenance:
         if self.test and self.test['kind']=='beams':return self.test['phase']=='on',False,0,'YELLOW'
         if self.test and self.test['kind']=='auto':return self.test['phase']=='clear',False,0,'YELLOW'
         if self.test and self.test['kind']=='rgb':return False,False,0,self.test['color']
-        if self.test and self.test['kind'] in ('module','alignment','capture'):return True,False,0,'YELLOW'
+        if self.test and self.test['kind'] in ('module','alignment'):return self.test['phase'] in ('starting','held'),False,0,'BLUE'
+        if self.test and self.test['kind']=='capture':return True,False,0,'YELLOW'
         if self.test and self.test['kind']=='display':return False,False,5999,'BLUE'
         return False,False,0,'BLUE' if self.enabled else 'YELLOW'
 
     def tick(self,controls,now,serial_idle=False,previous=None):
+        self.now=now;self.controls=controls
         wall=self.wall()
         if self.rfid_active():
             if not self.local_enabled():self.end_rfid('local_enable_expired',controls)
@@ -306,6 +351,13 @@ class Maintenance:
         if self.test:
             test=self.test
             if test['command']['expires_at']<=wall or not self.local_enabled():self.cancel_test(controls,'local_enable_expired')
+            elif test['kind'] in ('alignment','module'):
+                if test.get('mismatch'):self.cancel_test(controls,'mega_d9_did_not_hold_high')
+                elif test['phase']=='held' and now>=test['until']:
+                    test.update(phase='stopping',until=now+4);self.next_live=0
+                elif test['phase']=='stopping' and test['verified_low']:
+                    self.test=None;self.complete(test['command'],'completed' if test['verified_high'] else 'failed','mega_d9_high_then_low_verified_nano_unconfirmed' if test['verified_high'] else 'mega_d9_high_not_verified',controls)
+                elif now>=test['until']:self.cancel_test(controls,'module_'+test['phase']+'_not_verified')
             elif test['kind']=='tank':
                 if len(test['values'])>=20:
                     try:reason=self.tank.capture(test['phase'],test['values']);status='completed'
@@ -499,8 +551,8 @@ class Maintenance:
                 else:
                     self.volume=params['percent'];self.audio.volume=self.effects.volume=self.volume/100;self.stop_audio();self.save()
                     self.complete(command,'completed','audio_playback_level_saved',controls)
-            elif action=='module_test':self.test=dict(kind='module',command=command,until=now+5)
-            elif action=='laser_align':self.test=dict(kind='alignment',command=command,until=now+30)
+            elif action=='module_test':self.begin_module_test(command,now,5)
+            elif action=='laser_align':self.begin_module_test(command,now,30)
             elif action=='audio_mute':
                 self.audio.muted=self.effects.muted=params['muted'];self.stop_audio();self.save()
                 self.complete(command,'completed','audio_muted' if params['muted'] else 'audio_unmuted',controls)
