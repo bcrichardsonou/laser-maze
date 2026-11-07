@@ -20,7 +20,7 @@ def reader_reply(line):
     return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register","version_register"),values))
 
 
-VERSION = "bench-0.24.0"
+VERSION = "bench-0.24.1"
 
 
 class Controls:
@@ -165,9 +165,11 @@ class Controls:
 
 def update_usb_reader(reader,controls,maintenance,now):
     scans=reader.poll(now)
+    was_ready=controls.reader_ready
     controls.reader_ready=reader.ready
     controls.reader_diagnostics=reader.diagnostics()
     if not reader.ready:controls.entry.reset('reader_unavailable');return
+    if not was_ready and controls.entry.reason=='reader_unavailable':controls.entry.reset()
     for _ in range(scans):
         if maintenance.enabled or maintenance.pending:
             controls.entry.reset('maintenance');controls.last_scan_at=now
@@ -282,7 +284,7 @@ def main():
         send=status_frames.send
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.24.0")
+            initial("HELLO", "HELLO 1 bench-0.24.1")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
