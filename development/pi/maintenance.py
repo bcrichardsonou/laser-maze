@@ -132,7 +132,7 @@ class Maintenance:
             self.cancel_test(controls,'module_sequence_timed_out');return
         if test['settle_until'] is None:
             if serial_idle and previous==self.display():
-                duration=test['duration'] if test['phase']=='on' else 6.5 if test['phase']=='off' else 2.5
+                duration=test['duration'] if test['phase']=='on' else 2.0 if test['phase']=='off' else 2.5
                 test['settle_until']=now+duration
                 self.next_live=0
             return

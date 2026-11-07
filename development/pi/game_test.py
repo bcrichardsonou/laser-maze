@@ -10,7 +10,7 @@ import time
 
 from game_engine import Game, Settings, MODES
 
-VERSION = "bench-0.26.2"
+VERSION = "bench-0.26.3"
 
 
 def main():
@@ -53,7 +53,7 @@ def main():
             time.sleep(2)
             port.reset_input_buffer()
             port.timeout = 2
-            initial("HELLO", "HELLO 1 bench-0.26.2")
+            initial("HELLO", "HELLO 1 bench-0.26.3")
             initial("BEAM", "BEAM CLEAR")
             initial("ARM", "OK ARM")
             port.timeout = 0.02
