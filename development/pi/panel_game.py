@@ -11,6 +11,7 @@ from game_engine import Game, Settings, MODES
 from entry_authorization import Entry
 from usb_objective import USBObjective
 from usb_rfid import USBRFID
+from hazer_dmx import Hazer
 
 def reader_reply(line):
     words=line.split()
@@ -20,7 +21,7 @@ def reader_reply(line):
     return words[1]=="READY",dict(zip(("tag_responses","selection_failures","last_request_status","last_selection_status","receive_gain_register","version_register"),values))
 
 
-VERSION = "bench-0.24.1"
+VERSION = "bench-0.25.0"
 
 
 class Controls:
@@ -262,6 +263,7 @@ def main():
     maintenance.configure_controls(controls)
     usb_input=USBObjective(maintenance.folder/'usb-port.json')
     usb_reader=USBRFID();controls.usb_reader=usb_reader
+    hazer=Hazer(maintenance.folder/"dmx-settings.json");controls.hazer=hazer
     def audio_metrics():
         return dict(audio.metrics(), audio_effects_error=effects.error or 'none',
             audio_effect_last_cue_requested=effects.last_cue)
@@ -284,7 +286,7 @@ def main():
         send=status_frames.send
         try:
             time.sleep(2); port.reset_input_buffer()
-            initial("HELLO", "HELLO 1 bench-0.24.1")
+            initial("HELLO", "HELLO 1 bench-0.25.0")
             initial("KEYPAD", "KEYPAD READY")
             initial("CAL {break_below} {clear_above}".format(**maintenance.thresholds),"OK CAL {break_below} {clear_above}".format(**maintenance.thresholds))
             # Initialize all levels BEFORE enabling event subscription.
@@ -379,6 +381,7 @@ def main():
                 if now>=next_light:
                     send("LIGHT","LIGHT A0")
                     next_light=now+(.04 if maintenance.test and maintenance.test['kind'] in ('capture','auto','beams') else .2)
+                hazer.update(controls,maintenance,now)
                 maintenance.publish(controls,now)
                 status_frames.tick(now)
                 g = controls.game
@@ -398,6 +401,7 @@ def main():
         finally:
             try: port.write(b"OFF\n"); port.flush()
             except (OSError, serial.SerialException): pass
+            hazer.close()
             usb_reader.close()
             audio.close()
             effects.close()

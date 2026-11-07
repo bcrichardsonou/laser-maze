@@ -12,7 +12,7 @@ from game_reporting import atomic_json
 
 ID = re.compile(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\Z')
 COLORS = ('RED','GREEN','BLUE','YELLOW','PURPLE','OFF')
-ACTIONS = ('enter_maintenance','leave_maintenance','stop_game','snapshot','audio_play','stop_audio','audio_mute','rgb_test','display_test','restart_game','rfid_start','rfid_end','rfid_reset','keypad_start','keypad_end','beams_check','receiver_auto','receiver_capture','receiver_apply','receiver_thresholds','module_test','laser_align','game_settings','start_lock','audio_volume','audio_output_test','service_start','service_stop','reboot_pi','software_reinstall','door_test','doors_release')
+ACTIONS = ('enter_maintenance','leave_maintenance','stop_game','snapshot','audio_play','stop_audio','audio_mute','rgb_test','display_test','restart_game','rfid_start','rfid_end','rfid_reset','keypad_start','keypad_end','beams_check','receiver_auto','receiver_capture','receiver_apply','receiver_thresholds','module_test','laser_align','game_settings','start_lock','audio_volume','audio_output_test','service_start','service_stop','reboot_pi','software_reinstall','door_test','doors_release','hazer_test','hazer_stop','hazer_settings','dmx_pause','dmx_resume')
 
 
 def validate(command, identity, wall):
@@ -26,6 +26,12 @@ def validate(command, identity, wall):
     if not isinstance(p,dict): raise ValueError('invalid_parameters')
     if action=='audio_play':
         if set(p)!= {'clip'} or p['clip'] not in MEDIA: raise ValueError('invalid_clip')
+    elif action=='hazer_settings':
+        from hazer_dmx import validate_settings as validate_hazer
+        validate_hazer(p)
+    elif action=='hazer_test':
+        if set(p)!={'mode','pump','fan','seconds'} or p['mode'] not in ('adapter','fan','haze') or any(type(p[k]) is not int or not 0<=p[k]<=255 for k in ('pump','fan')) or type(p['seconds']) is not int or not 1<=p['seconds']<=10:raise ValueError('invalid_hazer_test')
+        if p['mode']=='adapter' and (p['pump'] or p['fan']) or p['mode']=='fan' and p['pump']:raise ValueError('invalid_hazer_test')
     elif action=='door_test':
         if set(p)!={'door'} or p['door'] not in ('entry','exit'):raise ValueError('invalid_door')
     elif action=='audio_mute':
@@ -101,8 +107,10 @@ class Maintenance:
             rfid=dict(diagnostics=controls.reader_diagnostics,ready=controls.reader_ready,scans_this_run=controls.scan_count,seconds_since_scan=round(now-controls.last_scan_at,1) if controls.last_scan_at is not None else None,entry=controls.entry.status(now)),
             settings=settings,inputs=list(controls.levels),last_key=self.last_key,last_key_at=int(self.last_key_at),
             audio=dict(volume=self.volume,muted=self.audio.muted,backend=str(self.audio.backend or 'unavailable'),output_device=self.audio.environment.get('ZOCO_AUDIO_TARGET','configured default') if hasattr(self.audio,'environment') else 'configured default'),
-            capabilities=dict(module_count=1,module_pixels=16,status_pixels=42,status_rows=14,ring_customization=False,laser_switching=True,powered_calibration=True,automatic_calibration=True,all_beams_check=True,keypad_layout='storm_12',staff_key_controls=True,usb_objective=True,isolated_keypad_test=True,rfid_test=True,rfid_reinitialize=True,rfid=True,hazer=False,door=True),
+            capabilities=dict(module_count=1,module_pixels=16,status_pixels=42,status_rows=14,ring_customization=False,laser_switching=True,powered_calibration=True,automatic_calibration=True,all_beams_check=True,keypad_layout='storm_12',staff_key_controls=True,usb_objective=True,isolated_keypad_test=True,rfid_test=True,rfid_reinitialize=True,rfid=True,hazer=getattr(controls,'hazer',None) is not None and controls.hazer.configured,door=True),
             firmware_version=getattr(self,'version','unconfirmed'),python_version=getattr(self,'version','unconfirmed'),serial_port=getattr(self,'serial_port','unconfirmed'),
+            hazer_test_seconds=max(0,int(self.test['until']-now+0.999)) if self.test and self.test['kind']=='hazer' else 0,
+            hazer_dmx=controls.hazer.status() if getattr(controls,'hazer',None) is not None else None,
             doors=dict(entry_pin=22,exit_pin=23,commanded=list(self.door_commanded) if self.door_commanded is not None else None,position_sensors=False,exit_release_seconds=max(0,int(controls.exit_release_until-now+0.999))),
             usb_input=getattr(self,'usb_input',None),rfid_test=self.rfid_snapshot(controls),keypad_test=self.keypad_session,staff_hold_seconds=getattr(self,'staff_hold_seconds',0),laser_command_on=self.display()[0],laser_seconds_remaining=max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('alignment','module','capture','auto','beams') else 0,
             test=self.test['kind'] if self.test else ('keypad' if self.keypad_active() else 'rfid' if self.rfid_active() else 'none'),capture_samples=len(self.test['values']) if self.test and self.test['kind'] in ('capture','auto','beams') else 0,
@@ -289,6 +297,13 @@ class Maintenance:
         if self.test:
             test=self.test
             if test['command']['expires_at']<=wall or not self.local_enabled():self.cancel_test(controls,'local_enable_expired')
+            elif test['kind']=='hazer':
+                h=getattr(controls,'hazer',None)
+                if not h or not h.connected:self.cancel_test(controls,'dmx_adapter_unavailable')
+                elif now>=test['until']:
+                    if h.pump==0 and h.fan==0 and h.frames>test['frames_before'] and h.last_status>=test['until']:
+                        self.test=None;self.complete(test['command'],'completed','dmx_frames_written_physical_hazer_unconfirmed',controls)
+                    elif now>test['until']+2:self.cancel_test(controls,'dmx_zero_output_unconfirmed')
             elif test['kind']=='door':
                 if now>=test['until'] and not test.get('releasing'):
                     test['releasing']=True
@@ -341,13 +356,22 @@ class Maintenance:
                 self.complete(dict(id=path.stem),'failed','invalid_or_expired_command',controls);continue
             if (self.folder/'results'/(path.stem+'.json')).exists():path.unlink(missing_ok=True);continue
             commands.append(command)
-        commands.sort(key=lambda c:0 if c['action'] in ('stop_game','stop_audio','doors_release') else 1)
+        commands.sort(key=lambda c:0 if c['action'] in ('stop_game','stop_audio','doors_release','hazer_stop','dmx_pause') else 1)
         for command in commands:
             if (self.folder/'results'/(command['id']+'.json')).exists():continue
             action,params=validate(command,self.identity,wall)
             if self.pending and command['id']==self.pending['id']:continue
             if self.test and command['id']==self.test['command']['id']:continue
-            if action=='doors_release':
+            if action in ('hazer_stop','dmx_pause'):
+                h=getattr(controls,'hazer',None)
+                if not h:self.complete(command,'failed','dmx_not_configured',controls);continue
+                if self.test and self.test['kind']=='hazer':self.cancel_test(controls)
+                h.stop()
+                if action=='dmx_pause':h.signal_enabled=False
+                self.complete(command,'completed','dmx_signal_pause_requested_keep_hazer_powered_for_cooldown' if action=='dmx_pause' else 'haze_zero_requested_automatic_disabled',controls)
+                for other in commands:
+                    if other['action'] in ('hazer_test','hazer_settings','dmx_resume') and not (self.folder/'results'/(other['id']+'.json')).exists():self.complete(other,'failed','cancelled_by_stop',controls)
+            elif action=='doors_release':
                 if controls.game:controls.game.finish('stopped');controls.tick(now)
                 controls.result=None;self.cancel_test(controls)
                 # Stay in maintenance so normal idle entry locking cannot reassert.
@@ -389,6 +413,20 @@ class Maintenance:
             elif not self.local_enabled():self.complete(command,'failed','press_5_in_maintenance_first',controls)
             elif action=='rfid_reset' and not self.keypad_active():self.reset_rfid(command,controls,now)
             elif self.test or self.keypad_active() or self.rfid_active():self.complete(command,'failed','test_busy',controls)
+            elif action=='hazer_settings':
+                h=getattr(controls,'hazer',None)
+                if not h or not h.configured:self.complete(command,'failed','dmx_not_configured',controls)
+                else:h.save(params);self.complete(command,'completed','hazer_settings_saved',controls)
+            elif action=='dmx_resume':
+                h=getattr(controls,'hazer',None)
+                if not h or not h.configured:self.complete(command,'failed','dmx_not_configured',controls)
+                else:h.signal_enabled=True;h.next_send=0;self.complete(command,'completed','dmx_zero_signal_requested',controls)
+            elif action=='hazer_test':
+                h=getattr(controls,'hazer',None)
+                if not h or not h.connected:self.complete(command,'failed','dmx_adapter_unavailable',controls)
+                else:
+                    h.signal_enabled=True
+                    self.test=dict(kind='hazer',command=command,pump=params['pump'],fan=params['fan'],until=now+params['seconds'],frames_before=h.frames)
             elif action=='door_test':
                 if not self.send:self.complete(command,'failed','serial_not_ready',controls);continue
                 self.test=dict(kind='door',command=command,until=now+5,door=params['door'])

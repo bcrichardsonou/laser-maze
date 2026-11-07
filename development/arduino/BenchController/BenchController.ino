@@ -13,7 +13,7 @@ void releaseDoors() {
   digitalWrite(ENTRY_RELAY_PIN, LOW);
   digitalWrite(EXIT_RELAY_PIN, LOW);
 }
-const char VERSION[] = "bench-0.24.1";
+const char VERSION[] = "bench-0.25.0";
 bool stableBroken = false;
 char command[32];
 unsigned int used = 0;
