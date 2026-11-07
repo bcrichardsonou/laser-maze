@@ -106,25 +106,11 @@ class Maintenance:
     def output_acknowledged(self,on,now):
         self.output['acknowledged_on']=on;self.output_ack_at=now;self.next_live=0
         print('MODULE ACK '+('HIGH' if on else 'LOW'),flush=True)
-        if self.test and self.test['kind'] in ('alignment','module') and self.test['phase']=='starting' and on:
-            self.test.update(phase='held',until=now+self.test['duration'])
 
     def receive_output(self,armed,on,pin,now):
         changed=(self.output['firmware_on'],self.output['pin_high'])!=(on,pin)
         self.output.update(firmware_on=on,pin_high=pin,checked_at=int(self.wall()));self.output_at=now
         if changed:print('MODULE READBACK armed=%s requested=%s D9=%s'%(armed,on,'HIGH' if pin else 'LOW'),flush=True)
-        if not self.test or self.test['kind'] not in ('alignment','module'):return
-        t=self.test
-        if t['phase']=='baseline' and self.output['acknowledged_on'] is False and now>=self.output_ack_at:
-            if armed and not on and not pin:
-                if t.get('low_since') is None:t['low_since']=now
-                elif now-t['low_since']>=.15:t.update(phase='starting',until=now+3)
-            else:t['low_since']=None
-        elif t['phase']=='held':
-            if armed and on and pin:t['verified_high']=True
-            else:t['mismatch']=True
-        elif t['phase']=='stopping' and self.output['acknowledged_on'] is False and now>=self.output_ack_at:
-            t['verified_low']=armed and not on and not pin
         self.next_live=0
 
     def output_snapshot(self,now):
@@ -134,10 +120,29 @@ class Maintenance:
         return p
 
     def begin_module_test(self,command,now,duration):
-        if not self.send:self.complete(command,'failed','serial_not_ready',self.controls);return
-        self.test=dict(kind='alignment' if duration==30 else 'module',command=command,phase='baseline',duration=duration,until=now+4,verified_high=False,verified_low=False)
-        self.output_requested(False,now)
-        self.send('PAUSE','OK PAUSE',lambda:self.output_acknowledged(False,self.now))
+        # Like automatic calibration: only display() requests output changes.
+        # No direct serial writes or acknowledgement callbacks in this test.
+        self.test=dict(kind='alignment' if duration==30 else 'module',command=command,
+            phase='off',duration=duration,settle_until=None,until=now+duration+20)
+        self.next_live=0
+
+    def module_tick(self,controls,now,serial_idle,previous):
+        test=self.test
+        if now>=test['until']:
+            self.cancel_test(controls,'module_sequence_timed_out');return
+        if test['settle_until'] is None:
+            if serial_idle and previous==self.display():
+                duration=test['duration'] if test['phase']=='on' else 6.5 if test['phase']=='off' else 2.5
+                test['settle_until']=now+duration
+                self.next_live=0
+            return
+        if now<test['settle_until']:return
+        if test['phase']=='off':test.update(phase='on',settle_until=None)
+        elif test['phase']=='on':test.update(phase='off_final',settle_until=None)
+        else:
+            self.test=None
+            self.complete(test['command'],'completed','module_off_on_off_acknowledged_physical_output_unconfirmed',controls)
+        self.next_live=0
 
     def receive_level(self,value,now):
         self.tank.receive(value,now)
@@ -164,7 +169,7 @@ class Maintenance:
             hazer_test_seconds=max(0,int(self.test['until']-now+0.999)) if self.test and self.test['kind']=='hazer' else 0,
             hazer_dmx=controls.hazer.status() if getattr(controls,'hazer',None) is not None else None,
             doors=dict(entry_pin=22,exit_pin=23,commanded=list(self.door_commanded) if self.door_commanded is not None else None,position_sensors=False,exit_release_seconds=max(0,int(controls.exit_release_until-now+0.999))),
-            usb_input=getattr(self,'usb_input',None),rfid_test=self.rfid_snapshot(controls),keypad_test=self.keypad_session,staff_hold_seconds=getattr(self,'staff_hold_seconds',0),laser_command_on=(self.display() if self.enabled or self.pending else controls.display(now))[0],laser_seconds_remaining=max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('alignment','module','capture','auto','beams') else 0,
+            usb_input=getattr(self,'usb_input',None),rfid_test=self.rfid_snapshot(controls),keypad_test=self.keypad_session,staff_hold_seconds=getattr(self,'staff_hold_seconds',0),laser_command_on=(self.display() if self.enabled or self.pending else controls.display(now))[0],laser_seconds_remaining=max(0,int((self.test.get('settle_until') or now)-now+0.999)) if self.test and self.test['kind'] in ('alignment','module') else max(0,int(self.test['until']-now)) if self.test and self.test['kind'] in ('capture','auto','beams') else 0,
             test=self.test['kind'] if self.test else ('keypad' if self.keypad_active() else 'rfid' if self.rfid_active() else 'none'),capture_samples=len(self.test['values']) if self.test and self.test['kind'] in ('capture','auto','beams') else 0,
             beam_check=self.beam_check,beam_check_step=self.test['phase'] if self.test and self.test['kind']=='beams' else 'none',
             calibration_step=self.test['phase'] if self.test and self.test['kind']=='auto' else ('saving' if self.test and self.test['kind']=='apply' else 'none'))
@@ -332,7 +337,7 @@ class Maintenance:
         if self.test and self.test['kind']=='beams':return self.test['phase']=='on',False,0,'YELLOW'
         if self.test and self.test['kind']=='auto':return self.test['phase']=='clear',False,0,'YELLOW'
         if self.test and self.test['kind']=='rgb':return False,False,0,self.test['color']
-        if self.test and self.test['kind'] in ('module','alignment'):return self.test['phase'] in ('starting','held'),False,0,'BLUE'
+        if self.test and self.test['kind'] in ('module','alignment'):return self.test['phase']=='on',False,0,'YELLOW'
         if self.test and self.test['kind']=='capture':return True,False,0,'YELLOW'
         if self.test and self.test['kind']=='display':return False,False,5999,'BLUE'
         return False,False,0,'BLUE' if self.enabled else 'YELLOW'
@@ -351,13 +356,7 @@ class Maintenance:
         if self.test:
             test=self.test
             if test['command']['expires_at']<=wall or not self.local_enabled():self.cancel_test(controls,'local_enable_expired')
-            elif test['kind'] in ('alignment','module'):
-                if test.get('mismatch'):self.cancel_test(controls,'mega_d9_did_not_hold_high')
-                elif test['phase']=='held' and now>=test['until']:
-                    test.update(phase='stopping',until=now+4);self.next_live=0
-                elif test['phase']=='stopping' and test['verified_low']:
-                    self.test=None;self.complete(test['command'],'completed' if test['verified_high'] else 'failed','mega_d9_high_then_low_verified_nano_unconfirmed' if test['verified_high'] else 'mega_d9_high_not_verified',controls)
-                elif now>=test['until']:self.cancel_test(controls,'module_'+test['phase']+'_not_verified')
+            elif test['kind'] in ('alignment','module'):self.module_tick(controls,now,serial_idle,previous)
             elif test['kind']=='tank':
                 if len(test['values'])>=20:
                     try:reason=self.tank.capture(test['phase'],test['values']);status='completed'
