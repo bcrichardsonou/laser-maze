@@ -1,0 +1,16 @@
+<?php
+declare(strict_types=1);
+if(PHP_SAPI!=='cli'){http_response_code(404);exit;}
+$root='/srv/zoco/public_html/manage';
+$expected=['maintenance-lib.php'=>'df9c28dff04010ac29a2f1c18372a62ad5eb0ba125c2a08ce204df81e93fe35a','maintenance.php'=>'8965ab3098e5131754dc780f41d270318eccdd3fa721cc548f591dfaadbff90e','assets/maintenance.js'=>'a88fb03ccee8e198d05511cc8d214db9208729b153420044fc5a2122bb7f8767','assets/maintenance.css'=>'b541cb5fb40e63a673ea76b55ce558bf40f06d81a5ecea005aa4c2214cb43f9c'];
+$backup=__DIR__.'/backup-'.date('Ymd-His').'-'.bin2hex(random_bytes(3));$temps=[];$changed=[];
+try{
+ $same=true;foreach($expected as $name=>$hash)if(hash_file('sha256',$root.'/'.$name)!==hash_file('sha256',__DIR__.'/public/'.$name))$same=false;
+ if($same){echo "USB RFID integration already installed.\n";exit;}
+ foreach($expected as $name=>$hash)if(hash_file('sha256',$root.'/'.$name)!==$hash)throw new RuntimeException('Live source changed: '.$name);
+ foreach(array_keys($expected) as $name)if(str_ends_with($name,'.php')){$output=[];exec(escapeshellarg(PHP_BINARY).' -l '.escapeshellarg(__DIR__.'/public/'.$name),$output,$status);if($status!==0)throw new RuntimeException('PHP syntax check failed');}
+ if(!mkdir($backup,0700))throw new RuntimeException('Backup failed');
+ foreach($expected as $name=>$hash){if(!is_dir(dirname($backup.'/'.$name)))mkdir(dirname($backup.'/'.$name),0700,true);if(!copy($root.'/'.$name,$backup.'/'.$name))throw new RuntimeException('Backup failed');chmod($backup.'/'.$name,0600);$temps[$name]=tempnam(dirname($root.'/'.$name),'.layout-');if(!copy(__DIR__.'/public/'.$name,$temps[$name])||!chmod($temps[$name],0644))throw new RuntimeException('Stage failed');}
+ foreach(array_reverse(array_keys($expected)) as $name){if(!rename($temps[$name],$root.'/'.$name))throw new RuntimeException('Activation failed');unset($temps[$name]);$changed[]=$name;}
+ echo "USB RFID integration installed. Private file backup: $backup\n";
+}catch(Throwable $e){foreach(array_reverse($changed) as $name)copy($backup.'/'.$name,$root.'/'.$name);foreach($temps as $tmp)@unlink($tmp);fwrite(STDERR,'Update stopped: '.$e->getMessage()."\n");exit(1);}

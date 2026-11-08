@@ -1,0 +1,15 @@
+CREATE TABLE IF NOT EXISTS zp_commands (
+ id CHAR(36) CHARACTER SET ascii PRIMARY KEY,
+ component_id BIGINT UNSIGNED NOT NULL,
+ requested_by BIGINT UNSIGNED NOT NULL,
+ action VARCHAR(40) NOT NULL,
+ parameters TEXT NOT NULL,
+ status VARCHAR(20) NOT NULL,
+ result TEXT NULL,
+ expires_at DATETIME NOT NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ INDEX(component_id,status,expires_at),
+ FOREIGN KEY(component_id) REFERENCES zp_components(id),
+ FOREIGN KEY(requested_by) REFERENCES zp_users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

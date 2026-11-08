@@ -1,0 +1,13 @@
+# Per-game unavailable beam exclusion — bench-0.14.0
+
+User expectation: a laser/receiver unavailable at startup should be removed from that game rather than block every game. This release replaces the prototype's any-blocked startup refusal with a fixed per-game enabled mask.
+
+At A/start, currently blocked beams are excluded. At the end of the existing five-second preparation, any additional blocked beams are also excluded. A beam excluded earlier is not automatically re-added during preparation or play. At least one beam must remain; otherwise outcome no_beams_available is a fault and all commanded outputs remain off. The next game constructs a fresh mask from then-current readings.
+
+During RUNNING the mask is fixed: included beam interruptions still count normal game breaks. Excluded beams cannot count breaks or turn on, even if readings recover mid-game. Normal-mode cooldown/warmup and three-break failure remain; break-all modes require completion only of included beams, plus the selected objective. Removing all beams cannot create an automatic win. Receiver A0 still uses the replacement laser's20/41 thresholds and30ms debounce. Nano firmware unchanged0.1.0/manual flash.
+
+This is automatic startup exclusion by observed blocked state, not a diagnosis of a failed laser vs blocked beam vs misalignment. It currently applies to the two bench channels: A0 receiver is beam1, D3 bench button is beam2. Availability of that button is not proof a second physical laser exists. Future real laser switching must establish a distinct powered alignment/health check before selecting beams; simply testing light while all physical lasers are off would exclude them. Current laser remains continuously powered without MOSFET.
+
+Game start/result events contain enabled/excluded beam IDs; final results reflect end-of-preparation selection. Live metrics have active_beams and excluded_beams CSV after a game selection exists, and retain the latest selection after completion; after process boot selection remains unconfirmed until the first start. The portal labels this Latest game selection, separately from current input and requested output. Console logs list exclusions; combined RGB is yellow for an otherwise operating game with exclusions, red when an included output is temporarily off. Original fields remain and metric budget stays <=40.
+
+Tests cover all four modes, partial exclusions, no break counts from excluded channels, no mid-game rejoin, preparation exclusions, all-unavailable refusal, next-game rejoin, break-all objective order, reporting and status metric budget. No physical sensor changes or test games are triggered by the deployment itself.

@@ -1,0 +1,272 @@
+[
+  {
+    "version": "bench-release-0.2.1",
+    "recorded_release_at": "2026-10-13T17:12:18.137169+00:00",
+    "commit": "4af075d9632283a5e4b4e4bf7cd631c009bda92e",
+    "source_files": 3
+  },
+  {
+    "version": "bench-demo-0.2.2",
+    "recorded_release_at": "2026-10-13T17:16:19.326461+00:00",
+    "commit": "7cef40c0a50eed5d3e034f8bd7627381c96c8742",
+    "source_files": 3
+  },
+  {
+    "version": "bench-game-0.3.0",
+    "recorded_release_at": "2026-10-13T20:12:47.755628+00:00",
+    "commit": "af31aa40673b52fb8a8ebcf38b90fe7859ea0f5e",
+    "source_files": 5
+  },
+  {
+    "version": "bench-panel-0.4.1",
+    "recorded_release_at": "2026-10-13T20:51:48.373348+00:00",
+    "commit": "61220cbe911d2e5d3cd871ca3e0e7a8b9359b7dc",
+    "source_files": 7
+  },
+  {
+    "version": "bench-controls-0.5.0",
+    "recorded_release_at": "2026-10-13T20:57:34.852914+00:00",
+    "commit": "e928929d4aec86efe6c9a6008b67921d899ee1b2",
+    "source_files": 8
+  },
+  {
+    "version": "bench-reporting-0.6.0",
+    "recorded_release_at": "2026-10-13T21:14:49.778539+00:00",
+    "commit": "118c90785e1b3178c1c1e00300649b16627e9cd4",
+    "source_files": 9
+  },
+  {
+    "version": "bench-autostart-0.7.0",
+    "recorded_release_at": "2026-10-14T00:33:47.522706+00:00",
+    "commit": "1a693a781dcc497ea7b8cabf33cdb88c15e7aae4",
+    "source_files": 9
+  },
+  {
+    "version": "bench-audio-0.8.0",
+    "recorded_release_at": "2026-10-14T01:29:32.814994+00:00",
+    "commit": "7996d3828ea864252d054b142136a88b5b2621dd",
+    "source_files": 10
+  },
+  {
+    "version": "bench-design-audio-0.9.0",
+    "recorded_release_at": "2026-10-14T01:52:03.313142+00:00",
+    "commit": "8a6112328910318ba0b161b2b2432ecb48b32c8c",
+    "source_files": 21
+  },
+  {
+    "version": "bench-maintenance-0.10.0",
+    "recorded_release_at": "2026-10-14T17:25:26.089919+00:00",
+    "commit": "fff5821edc8986f08ed8239f43489abdb4d8a115",
+    "source_files": 23
+  },
+  {
+    "version": "bench-with-nano-0.1.0",
+    "recorded_release_at": "2026-10-16T19:40:39.806164+00:00",
+    "commit": "afeba2d0cbd7295762135b3c9ccd3a41048dd168",
+    "source_files": 26
+  },
+  {
+    "version": "mega-migration-0.10.0",
+    "recorded_release_at": "2026-10-16T20:07:57.294893+00:00",
+    "commit": "d4c7d44049440237c5dcfc19c6ae8bac9607a841",
+    "source_files": 26
+  },
+  {
+    "version": "mega-nano-output-0.11.0",
+    "recorded_release_at": "2026-10-16T20:35:19.901563+00:00",
+    "commit": "051b33dcb3dc1441e1104c3a3d87606c2c66e9bd",
+    "source_files": 26
+  },
+  {
+    "version": "mega-receiver-calibration-0.12.0",
+    "recorded_release_at": "2026-10-16T20:50:05.237572+00:00",
+    "commit": "dfb63b10ecf4d689b9be2d1a6b5cb729edaedaa9",
+    "source_files": 27
+  },
+  {
+    "version": "mega-analog-beam1-0.13.0",
+    "recorded_release_at": "2026-10-16T20:54:29.898266+00:00",
+    "commit": "a9674512ece0955a1e9d5651c935ca9ddeb8e0ce",
+    "source_files": 28
+  },
+  {
+    "version": "mega-recalibrated-beam1-0.13.1",
+    "recorded_release_at": "2026-10-17T14:36:43.547712+00:00",
+    "commit": "61c2ef951da99b1dba1a25e218764618fcd1162d",
+    "source_files": 28
+  },
+  {
+    "version": "mega-beam-exclusion-0.14.0",
+    "recorded_release_at": "2026-10-17T14:46:48.585938+00:00",
+    "commit": "df4a43417ff958d19610806eb914ddedb8ca40e5",
+    "source_files": 28
+  },
+  {
+    "version": "mega-maintenance-0.15.0",
+    "recorded_release_at": "2026-10-17T15:08:31.314330+00:00",
+    "commit": "fd8b6abe894250e9495749ffd2cd2fe3a9179ad4",
+    "source_files": 30
+  },
+  {
+    "version": "mega-maintenance-0.15.1",
+    "recorded_release_at": "2026-10-17T15:11:01.183401+00:00",
+    "commit": "59da5a16a3395aeef6caf94fa1c5dd5983a8f1ff",
+    "source_files": 30
+  },
+  {
+    "version": "mega-powered-calibration-0.16.0",
+    "recorded_release_at": "2026-10-26T22:26:31.362093+00:00",
+    "commit": "05e46e691737107fc43f13d04f8e7b3a91553e29",
+    "source_files": 30
+  },
+  {
+    "version": "mega-entrance-status-0.16.1",
+    "recorded_release_at": "2026-10-26T22:38:57.295378+00:00",
+    "commit": "7d2d208cb0554c7b20642eebbf8760cbb2b1a002",
+    "source_files": 30
+  },
+  {
+    "version": "mega-rfid-entry-0.17.0",
+    "recorded_release_at": "2026-10-27T00:20:28.544857+00:00",
+    "commit": "60d7ca1ce97d1c42b46bd2c57858ad0cc346cb1f",
+    "source_files": 32
+  },
+  {
+    "version": "mega-rfid-status-0.17.1",
+    "recorded_release_at": "2026-10-27T00:30:27.484983+00:00",
+    "commit": "949ad87b5105adb5ee887ebba52b2b8f3c8fd029",
+    "source_files": 32
+  },
+  {
+    "version": "mega-rfid-reception-0.17.2",
+    "recorded_release_at": "2026-10-27T00:44:11.689113+00:00",
+    "commit": "63e2b75c28b4aefc7bb23b2737f988106e8be278",
+    "source_files": 32
+  },
+  {
+    "version": "mega-rfid-reception-0.17.3",
+    "recorded_release_at": "2026-10-27T00:46:41.558174+00:00",
+    "commit": "7500f02cfcd5d751fbf92c4581791a3862abebc3",
+    "source_files": 32
+  },
+  {
+    "version": "mega-auto-calibration-0.18.0",
+    "recorded_release_at": "2026-11-03T03:50:45.338539+00:00",
+    "commit": "732d92c0dffa5c41d9799d929bd3635f44a68ef7",
+    "source_files": 32
+  },
+  {
+    "version": "mega-beam-check-0.18.1",
+    "recorded_release_at": "2026-11-03T04:05:25.025714+00:00",
+    "commit": "8161a721f3e45711cd7d575a571a6662f8c09a29",
+    "source_files": 32
+  },
+  {
+    "version": "mega-storm-keypad-0.19.0",
+    "recorded_release_at": "2026-11-03T16:53:01.358585+00:00",
+    "commit": "8b256e52e95885ff8dfd2ffc76b93f543fce03f9",
+    "source_files": 32
+  },
+  {
+    "version": "mega-keypad-test-0.19.1",
+    "recorded_release_at": "2026-11-03T17:17:50.814651+00:00",
+    "commit": "d2c02b4357dbf002a97dba5e0cc08612d0b70814",
+    "source_files": 32
+  },
+  {
+    "version": "mega-status-brightness-0.19.2",
+    "recorded_release_at": "2026-11-03T22:52:50.817259+00:00",
+    "commit": "7712d49a5473cc7ba5f3006a1647949f7d175e94",
+    "source_files": 32
+  },
+  {
+    "version": "mega-status-animation-0.20.0",
+    "recorded_release_at": "2026-11-04T23:54:41.191213+00:00",
+    "commit": "c75f6d1d524b70cea88a9d6da72487c1929e520b",
+    "source_files": 32
+  },
+  {
+    "version": "mega-status-animation-0.20.1",
+    "recorded_release_at": "2026-11-04T23:57:09.229982+00:00",
+    "commit": "a1545396eb5f19294ae5f88bb7aa1736bff77205",
+    "source_files": 32
+  },
+  {
+    "version": "mega-rfid-test-0.21.0",
+    "recorded_release_at": "2026-11-05T22:13:17.975968+00:00",
+    "commit": "5c9c100a6bd7144c87e8fd0e339040baef595ee1",
+    "source_files": 32
+  },
+  {
+    "version": "mega-rfid-diagnostic-0.21.1",
+    "recorded_release_at": "2026-11-06T00:29:22.781244+00:00",
+    "commit": "dca52a3827978dd4ceb35384d932e4f0e7530555",
+    "source_files": 32
+  },
+  {
+    "version": "mega-usb-objective-0.22.0",
+    "recorded_release_at": "2026-11-06T03:49:28.407372+00:00",
+    "commit": "755227a3010f245f8593615900f0742d7bf548f6",
+    "source_files": 33
+  },
+  {
+    "version": "mega-door-relays-0.23.0",
+    "recorded_release_at": "2026-11-06T20:19:52.553936+00:00",
+    "commit": "f2b69659396764ee8c745f544e8c98486ffb77db",
+    "source_files": 33
+  },
+  {
+    "version": "mega-door-timing-0.23.1",
+    "recorded_release_at": "2026-11-06T20:27:13.155135+00:00",
+    "commit": "30076c11f5c3ce657951611aeb2f89197413a7b9",
+    "source_files": 33
+  },
+  {
+    "version": "mega-door-exit-10s-0.23.2",
+    "recorded_release_at": "2026-11-06T20:58:25.444669+00:00",
+    "commit": "30b82f9bc3c8735a6360cf273e3784b53828111a",
+    "source_files": 33
+  },
+  {
+    "version": "mega-usb-rfid-0.24.0",
+    "recorded_release_at": "2026-11-07T01:57:39.144475+00:00",
+    "commit": "108b9b65c49e3a6cca3770433605f3a6dadbf0a1",
+    "source_files": 36
+  },
+  {
+    "version": "mega-usb-rfid-0.24.1",
+    "recorded_release_at": "2026-11-07T01:58:42.859726+00:00",
+    "commit": "e9c8e79f6ca682ab5cd81d8810422d14ec26717a",
+    "source_files": 36
+  },
+  {
+    "version": "mega-hazer-dmx-0.25.0",
+    "recorded_release_at": "2026-11-07T17:21:42.827305+00:00",
+    "commit": "18b80e964ab1da2996ca6b94009ea61f08ef5e6f",
+    "source_files": 37
+  },
+  {
+    "version": "mega-tank-level-0.26.0",
+    "recorded_release_at": "2026-11-07T17:50:54.653400+00:00",
+    "commit": "8d8e4bed57f5984e9eec001da45ce39a4e8ce740",
+    "source_files": 38
+  },
+  {
+    "version": "mega-module-verify-0.26.1",
+    "recorded_release_at": "2026-11-07T22:25:39.862232+00:00",
+    "commit": "78d3d6b638182c4e4074dc5071857c7ab42e146e",
+    "source_files": 38
+  },
+  {
+    "version": "mega-module-rewrite-0.26.2",
+    "recorded_release_at": "2026-11-07T22:49:36.565197+00:00",
+    "commit": "cd745a939f521cc1b19709abb38f28ff63cba4b0",
+    "source_files": 38
+  },
+  {
+    "version": "mega-module-pause-0.26.3",
+    "recorded_release_at": "2026-11-07T23:15:00.505675+00:00",
+    "commit": "8e1efac82baa1413630689105c7f5f3ccadcad17",
+    "source_files": 38
+  }
+]

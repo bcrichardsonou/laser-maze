@@ -1,0 +1,9 @@
+# First Nano module output — bench-0.11.0
+
+Mega D9 is now a dedicated active-high command for module 1. It mirrors beam 1's commanded state and built-in LED. Connect Mega D9 to Nano D2 and a shared GND, retaining the Nano-side external 10k pulldown. Do not connect D9 to the Nano laser output pin D3 or directly to the laser. Remove any Nano D2-to-5V test jumper before connecting the Mega. Nano 0.1.0 firmware remains unchanged/manual USB upload.
+
+The Pi owns the five-second preparation delay. Outputs for both bench beams now stay LOW through `starting`; only `running` permits HIGH. This corrects the old simulated-beam behavior, which lit outputs during preparation. D9 goes LOW on beam 1 cooldown/break-all disable, stop, win, timeout, maintenance, serial errors, HELLO/OFF and the existing one-second heartbeat watchdog. After a normal-mode cooldown it goes HIGH again, so the Nano repeats its startup animation; existing cooldown/warmup rules are otherwise unchanged. Beam 2's button does not directly switch D9, unless the resulting game outcome stops all beams.
+
+Only one Nano output is implemented. No analog light sensor integration, 15-module output map or remote laser alignment is enabled in this release. Existing receiver input is still the beam 1 bench button on Mega D2 (a different board from Nano D2). Physical Nano/ring/MOSFET/power wiring remains a user acceptance test; host tests verify commanded logic, not actual laser output. First check the ring and control signal with the laser disconnected until driver polarity is established.
+
+Acceptance: idle dark; A starts five seconds with D9 LOW; then Nano startup fill/breathing; beam1 button makes D9 LOW/red fade; after normal cooldown the module restarts; D stops immediately; maintenance tests leave D9 LOW. Firmware Nano version stays nano-module-0.1.0, controller/Python version bench-0.11.0.

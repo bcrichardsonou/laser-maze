@@ -1,0 +1,9 @@
+// Approved exhibit service access: brent, PC/SC daemon, ACR1552 readers only.
+polkit.addRule(function(action, subject) {
+    if (subject.user !== "brent") return;
+    if (action.id === "org.debian.pcsc-lite.access_pcsc") return polkit.Result.YES;
+    if (action.id === "org.debian.pcsc-lite.access_card") {
+        var reader = action.lookup("reader");
+        if (reader && reader.indexOf("ACR1552") !== -1) return polkit.Result.YES;
+    }
+});

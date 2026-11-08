@@ -1,0 +1,14 @@
+[Unit]
+Description=Transfer Laser Maze game reports into ZoCo upload queue
+
+[Service]
+Type=simple
+User=brent
+WorkingDirectory=/home/brent/laser-maze
+ExecStart=/usr/bin/python3 /home/brent/laser-maze/deployments/current/game_reporting.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

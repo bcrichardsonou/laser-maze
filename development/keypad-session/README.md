@@ -1,0 +1,11 @@
+# Isolated keypad test — installed November 3, 2026
+
+Release mega-keypad-test-0.19.1 / bench-0.19.1. Explicit Start keypad test and End keypad test forms live inside the same bordered card as the last-test-key reading, receive time, press count, detected-key list and remaining-time state. Removed duplicate last-key data from the unrelated receiver diagnostics paragraph. Buttons at top of card, compact instructions, responsive two-column span.
+
+Start requires administrator/local maintenance confirmation and fresh isolated_keypad_test capability. It acknowledges start immediately and runs an independent two-minute diagnostic session, bounded by the existing local grant. The original command TTL remains 60 seconds; no general TTL relaxation. Every physical key is read only during the session: no mission code, game objective or 5/*/hold0 shortcut. Data clears at start; seen keys retain presses between portal polls. No additional serial commands or startup UART traffic.
+
+End, remote Stop, leaving maintenance, local-grant expiry, automatic timeout or controller restart ends the session. Held keys must be released before shortcuts work again, including a 0 held across timeout/end. Session state is not persisted/resumed after restart. Other hardware tests/settings changes are blocked while active; remote Stop remains available. No physical diagnostic test was initiated by agent.
+
+Validation: 134 Pi tests including keypad suppression, no local-grant renewal from 5, long 0 immunity, post-test release guard, two-minute expiry beyond start-command TTL, end without local grant, hardware-test exclusion, reset and payload limits after prior calibration/beam test. 17 deployment tests and 42 isolated PHP checks passed; JS syntax and actual Start/End browser preview verified. Mega compile 14,578 flash / 1,075 static RAM. Archived to portal before flash, Pi and Mac copies retained. Live version/capability and active services verified. Installed portal rendered read-only. Initial portal backup backup-20261103-101913-b70c97; compact-card follow-up has its own private timestamped backup.
+
+Next physical acceptance: refresh portal, request maintenance and press 5 if needed, Start keypad test. Try 0–9, *, # and a long 0 hold; verify all appear inside card without exiting maintenance. End test, release keys, then verify normal shortcuts work again.

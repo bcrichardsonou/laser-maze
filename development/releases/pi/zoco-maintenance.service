@@ -1,0 +1,18 @@
+[Unit]
+Description=ZoCo Laser Maze maintenance command delivery
+After=network-online.target zoco-game.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=brent
+Group=brent
+WorkingDirectory=/home/brent/laser-maze/deployments/current
+ExecStart=/usr/bin/python3 -u /home/brent/laser-maze/deployments/current/maintenance_bridge.py
+Restart=always
+RestartSec=10
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

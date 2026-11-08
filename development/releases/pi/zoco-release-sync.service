@@ -1,0 +1,11 @@
+[Unit]
+Description=Retry pending ZoCo deployment reports
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=brent
+WorkingDirectory=/home/brent/laser-maze
+ExecStart=/usr/bin/python3 /home/brent/laser-maze/tools/deploy.py sync
+UMask=0077

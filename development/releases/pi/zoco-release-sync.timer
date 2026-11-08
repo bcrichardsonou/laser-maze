@@ -1,0 +1,10 @@
+[Unit]
+Description=Retry ZoCo deployment reports every two minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+Unit=zoco-release-sync.service
+
+[Install]
+WantedBy=timers.target
